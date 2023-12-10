@@ -1,714 +1,0 @@
-[2023-01-02 22:14:51,891.891 dsw45814-5cf5d466b4-z5mvr:19821 INFO utils.py:30] NOTICE: PAIDEBUGGER is turned off.
-/home/pai/lib/python3.6/site-packages/OpenSSL/crypto.py:12: CryptographyDeprecationWarning: Python 3.6 is no longer supported by the Python core team. Therefore, support for it is deprecated in cryptography and will be removed in a future release.
-  from cryptography import x509
-Some weights of the model checkpoint at /mnt/ewwe/yts/saved_models/v3.3.1-100 were not used when initializing ATModel: ['selection_head.0.bias', 'start_prediction_head.2.bias', 'end_prediction_head.2.weight', 'end_prediction_head.2.bias', 'mam_head.dense.weight', 'start_prediction_head.0.bias', 'mlm_head.dense.weight', 'mam_head.decoder.weight', 'selection_head.2.weight', 'mlm_head.bias', 'mlm_head.decoder.bias', 'start_prediction_head.0.weight', 'selection_head.0.weight', 'mam_head.dense.bias', 'mam_head.bias', 'selection_head.2.bias', 'mam_head.decoder.bias', 'audio_encoder.audio_sep', 'end_prediction_head.0.weight', 'mam_head.layer_norm.bias', 'mlm_head.decoder.weight', 'mam_head.layer_norm.weight', 'start_prediction_head.2.weight', 'mlm_head.dense.bias', 'mlm_head.layer_norm.bias', 'end_prediction_head.0.bias', 'mlm_head.layer_norm.weight']
-- This IS expected if you are initializing ATModel from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
-- This IS NOT expected if you are initializing ATModel from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
-Model v3.3.1-100 datasize 960 batchsize 12 epochs 16 lr 2.0e-05 gradacc 1 task iemocap last_conv_layer group prompt False train_mode eleventurn
-has_audio_cls True multi audio False v2 Trueprompt False bert False
-Selected optimization level O1:  Insert automatic casts around Pytorch functions and Tensor methods.
-
-Defaults for this optimization level are:
-enabled                : True
-opt_level              : O1
-cast_model_type        : None
-patch_torch_functions  : True
-keep_batchnorm_fp32    : None
-master_weights         : None
-loss_scale             : dynamic
-Processing user overrides (additional kwargs that are not None)...
-After processing overrides, optimization options are:
-enabled                : True
-opt_level              : O1
-cast_model_type        : None
-patch_torch_functions  : True
-keep_batchnorm_fp32    : None
-master_weights         : None
-loss_scale             : dynamic
-calculate center:   0%|                                                                                           | 0/82 [00:00<?, ?it/s]calculate center:   1%|█                                                                                  | 1/82 [00:02<03:11,  2.36s/it]calculate center:   2%|██                                                                                 | 2/82 [00:02<01:43,  1.29s/it]calculate center:   4%|███                                                                                | 3/82 [00:03<01:14,  1.05it/s]calculate center:   5%|████                                                                               | 4/82 [00:04<01:02,  1.24it/s]calculate center:   6%|█████                                                                              | 5/82 [00:04<00:56,  1.36it/s]calculate center:   7%|██████                                                                             | 6/82 [00:05<00:53,  1.42it/s]calculate center:   9%|███████                                                                            | 7/82 [00:05<00:51,  1.47it/s]calculate center:  10%|████████                                                                           | 8/82 [00:06<00:47,  1.55it/s]calculate center:  11%|█████████                                                                          | 9/82 [00:06<00:43,  1.68it/s]calculate center:  12%|██████████                                                                        | 10/82 [00:07<00:43,  1.65it/s]calculate center:  13%|███████████                                                                       | 11/82 [00:08<00:42,  1.67it/s]calculate center:  15%|████████████                                                                      | 12/82 [00:08<00:40,  1.75it/s]calculate center:  16%|█████████████                                                                     | 13/82 [00:09<00:39,  1.73it/s]calculate center:  17%|██████████████                                                                    | 14/82 [00:09<00:39,  1.73it/s]calculate center:  18%|███████████████                                                                   | 15/82 [00:10<00:38,  1.75it/s]calculate center:  20%|████████████████                                                                  | 16/82 [00:11<00:38,  1.73it/s]calculate center:  21%|█████████████████                                                                 | 17/82 [00:11<00:38,  1.70it/s]calculate center:  22%|██████████████████                                                                | 18/82 [00:12<00:36,  1.77it/s]calculate center:  23%|███████████████████                                                               | 19/82 [00:12<00:36,  1.75it/s]calculate center:  24%|████████████████████                                                              | 20/82 [00:13<00:36,  1.71it/s]calculate center:  26%|█████████████████████                                                             | 21/82 [00:14<00:39,  1.55it/s]calculate center:  27%|██████████████████████                                                            | 22/82 [00:14<00:39,  1.54it/s]calculate center:  28%|███████████████████████                                                           | 23/82 [00:15<00:37,  1.56it/s]calculate center:  29%|████████████████████████                                                          | 24/82 [00:16<00:36,  1.59it/s]calculate center:  30%|█████████████████████████                                                         | 25/82 [00:16<00:37,  1.51it/s]calculate center:  32%|██████████████████████████                                                        | 26/82 [00:17<00:37,  1.51it/s]calculate center:  33%|███████████████████████████                                                       | 27/82 [00:18<00:36,  1.53it/s]calculate center:  34%|████████████████████████████                                                      | 28/82 [00:18<00:33,  1.59it/s]calculate center:  35%|█████████████████████████████                                                     | 29/82 [00:19<00:32,  1.64it/s]calculate center:  37%|██████████████████████████████                                                    | 30/82 [00:19<00:31,  1.64it/s]calculate center:  38%|███████████████████████████████                                                   | 31/82 [00:20<00:31,  1.63it/s]calculate center:  39%|████████████████████████████████                                                  | 32/82 [00:20<00:29,  1.67it/s]calculate center:  40%|█████████████████████████████████                                                 | 33/82 [00:21<00:28,  1.74it/s]calculate center:  41%|██████████████████████████████████                                                | 34/82 [00:22<00:30,  1.60it/s]calculate center:  43%|███████████████████████████████████                                               | 35/82 [00:22<00:29,  1.57it/s]calculate center:  44%|████████████████████████████████████                                              | 36/82 [00:23<00:29,  1.58it/s]calculate center:  45%|█████████████████████████████████████                                             | 37/82 [00:24<00:27,  1.64it/s]calculate center:  46%|██████████████████████████████████████                                            | 38/82 [00:24<00:25,  1.71it/s]calculate center:  48%|███████████████████████████████████████                                           | 39/82 [00:25<00:25,  1.71it/s]calculate center:  49%|████████████████████████████████████████                                          | 40/82 [00:25<00:24,  1.69it/s]calculate center:  50%|█████████████████████████████████████████                                         | 41/82 [00:26<00:23,  1.76it/s]calculate center:  51%|██████████████████████████████████████████                                        | 42/82 [00:26<00:22,  1.79it/s]calculate center:  52%|███████████████████████████████████████████                                       | 43/82 [00:27<00:21,  1.82it/s]calculate center:  54%|████████████████████████████████████████████                                      | 44/82 [00:27<00:20,  1.87it/s]calculate center:  55%|█████████████████████████████████████████████                                     | 45/82 [00:28<00:21,  1.69it/s]calculate center:  56%|██████████████████████████████████████████████                                    | 46/82 [00:29<00:22,  1.59it/s]calculate center:  57%|██████████████████████████████████████████████▉                                   | 47/82 [00:29<00:21,  1.63it/s]calculate center:  59%|████████████████████████████████████████████████                                  | 48/82 [00:30<00:20,  1.65it/s]calculate center:  60%|█████████████████████████████████████████████████                                 | 49/82 [00:31<00:19,  1.70it/s]calculate center:  61%|██████████████████████████████████████████████████                                | 50/82 [00:31<00:18,  1.77it/s]calculate center:  62%|███████████████████████████████████████████████████                               | 51/82 [00:32<00:17,  1.78it/s]calculate center:  63%|████████████████████████████████████████████████████                              | 52/82 [00:32<00:16,  1.85it/s]calculate center:  65%|█████████████████████████████████████████████████████                             | 53/82 [00:33<00:16,  1.78it/s]calculate center:  66%|██████████████████████████████████████████████████████                            | 54/82 [00:33<00:15,  1.82it/s]calculate center:  67%|███████████████████████████████████████████████████████                           | 55/82 [00:34<00:15,  1.77it/s]calculate center:  68%|████████████████████████████████████████████████████████                          | 56/82 [00:34<00:15,  1.72it/s]calculate center:  70%|████████████████████████████████████████████████████████▉                         | 57/82 [00:35<00:14,  1.75it/s]calculate center:  71%|██████████████████████████████████████████████████████████                        | 58/82 [00:36<00:14,  1.71it/s]calculate center:  72%|███████████████████████████████████████████████████████████                       | 59/82 [00:36<00:13,  1.66it/s]calculate center:  73%|████████████████████████████████████████████████████████████                      | 60/82 [00:37<00:12,  1.70it/s]calculate center:  74%|█████████████████████████████████████████████████████████████                     | 61/82 [00:37<00:12,  1.71it/s]calculate center:  76%|██████████████████████████████████████████████████████████████                    | 62/82 [00:38<00:11,  1.73it/s]calculate center:  77%|███████████████████████████████████████████████████████████████                   | 63/82 [00:39<00:10,  1.75it/s]calculate center:  78%|████████████████████████████████████████████████████████████████                  | 64/82 [00:39<00:10,  1.77it/s]calculate center:  79%|█████████████████████████████████████████████████████████████████                 | 65/82 [00:40<00:09,  1.82it/s]calculate center:  80%|██████████████████████████████████████████████████████████████████                | 66/82 [00:40<00:08,  1.78it/s]calculate center:  82%|███████████████████████████████████████████████████████████████████               | 67/82 [00:41<00:08,  1.84it/s]calculate center:  83%|████████████████████████████████████████████████████████████████████              | 68/82 [00:41<00:08,  1.75it/s]calculate center:  84%|█████████████████████████████████████████████████████████████████████             | 69/82 [00:42<00:07,  1.70it/s]calculate center:  85%|██████████████████████████████████████████████████████████████████████            | 70/82 [00:42<00:06,  1.75it/s]calculate center:  87%|███████████████████████████████████████████████████████████████████████           | 71/82 [00:43<00:06,  1.77it/s]calculate center:  88%|████████████████████████████████████████████████████████████████████████          | 72/82 [00:44<00:05,  1.75it/s]calculate center:  89%|█████████████████████████████████████████████████████████████████████████         | 73/82 [00:44<00:05,  1.63it/s]calculate center:  90%|██████████████████████████████████████████████████████████████████████████        | 74/82 [00:45<00:04,  1.63it/s]calculate center:  91%|███████████████████████████████████████████████████████████████████████████       | 75/82 [00:46<00:04,  1.54it/s]calculate center:  93%|████████████████████████████████████████████████████████████████████████████      | 76/82 [00:46<00:03,  1.52it/s]calculate center:  94%|█████████████████████████████████████████████████████████████████████████████     | 77/82 [00:47<00:03,  1.54it/s]calculate center:  95%|██████████████████████████████████████████████████████████████████████████████    | 78/82 [00:48<00:02,  1.61it/s]calculate center:  96%|███████████████████████████████████████████████████████████████████████████████   | 79/82 [00:48<00:01,  1.51it/s]calculate center:  98%|████████████████████████████████████████████████████████████████████████████████  | 80/82 [00:49<00:01,  1.49it/s]calculate center:  99%|█████████████████████████████████████████████████████████████████████████████████ | 81/82 [00:50<00:00,  1.54it/s]calculate center: 100%|██████████████████████████████████████████████████████████████████████████████████| 82/82 [00:50<00:00,  1.71it/s]calculate center: 100%|██████████████████████████████████████████████████████████████████████████████████| 82/82 [00:50<00:00,  1.62it/s]
-train:   0%|                                                                                                      | 0/28 [00:00<?, ?it/s]train:   0%|                                                                             | 0/28 [00:00<?, ?it/s, CE: 1.7157 SPCL: 0.5174]train:   4%|██▍                                                                  | 1/28 [00:00<00:15,  1.76it/s, CE: 1.7157 SPCL: 0.5174]train:   4%|██▍                                                                  | 1/28 [00:00<00:15,  1.76it/s, CE: 1.7946 SPCL: 0.4426]train:   7%|████▉                                                                | 2/28 [00:01<00:13,  1.89it/s, CE: 1.7946 SPCL: 0.4426]train:   7%|████▉                                                                | 2/28 [00:01<00:13,  1.89it/s, CE: 1.1469 SPCL: 0.5903]train:  11%|███████▍                                                             | 3/28 [00:01<00:12,  2.05it/s, CE: 1.1469 SPCL: 0.5903]train:  11%|███████▍                                                             | 3/28 [00:01<00:12,  2.05it/s, CE: 1.0678 SPCL: 0.5519]train:  14%|█████████▊                                                           | 4/28 [00:01<00:11,  2.11it/s, CE: 1.0678 SPCL: 0.5519]train:  14%|█████████▊                                                           | 4/28 [00:02<00:11,  2.11it/s, CE: 1.0122 SPCL: 0.5656]train:  18%|████████████▎                                                        | 5/28 [00:02<00:10,  2.11it/s, CE: 1.0122 SPCL: 0.5656]train:  18%|████████████▎                                                        | 5/28 [00:02<00:10,  2.11it/s, CE: 1.0740 SPCL: 0.5155]train:  21%|██████████████▊                                                      | 6/28 [00:02<00:10,  2.16it/s, CE: 1.0740 SPCL: 0.5155]train:  21%|██████████████▊                                                      | 6/28 [00:03<00:10,  2.16it/s, CE: 1.1598 SPCL: 0.4401]train:  25%|█████████████████▎                                                   | 7/28 [00:03<00:09,  2.17it/s, CE: 1.1598 SPCL: 0.4401]train:  25%|█████████████████▎                                                   | 7/28 [00:03<00:09,  2.17it/s, CE: 0.8748 SPCL: 0.5975]train:  29%|███████████████████▋                                                 | 8/28 [00:03<00:09,  2.18it/s, CE: 0.8748 SPCL: 0.5975]train:  29%|███████████████████▋                                                 | 8/28 [00:04<00:09,  2.18it/s, CE: 0.9988 SPCL: 0.5056]train:  32%|██████████████████████▏                                              | 9/28 [00:04<00:09,  2.10it/s, CE: 0.9988 SPCL: 0.5056]train:  32%|██████████████████████▏                                              | 9/28 [00:04<00:09,  2.10it/s, CE: 1.0913 SPCL: 0.4365]train:  36%|████████████████████████▎                                           | 10/28 [00:04<00:08,  2.06it/s, CE: 1.0913 SPCL: 0.4365]train:  36%|████████████████████████▎                                           | 10/28 [00:05<00:08,  2.06it/s, CE: 0.7823 SPCL: 0.5841]train:  39%|██████████████████████████▋                                         | 11/28 [00:05<00:08,  2.08it/s, CE: 0.7823 SPCL: 0.5841]train:  39%|██████████████████████████▋                                         | 11/28 [00:05<00:08,  2.08it/s, CE: 0.7114 SPCL: 0.6496]train:  43%|█████████████████████████████▏                                      | 12/28 [00:05<00:07,  2.05it/s, CE: 0.7114 SPCL: 0.6496]train:  43%|█████████████████████████████▏                                      | 12/28 [00:05<00:07,  2.05it/s, CE: 0.8965 SPCL: 0.4983]train:  46%|███████████████████████████████▌                                    | 13/28 [00:06<00:07,  2.03it/s, CE: 0.8965 SPCL: 0.4983]train:  46%|███████████████████████████████▌                                    | 13/28 [00:06<00:07,  2.03it/s, CE: 1.0556 SPCL: 0.4739]train:  50%|██████████████████████████████████                                  | 14/28 [00:06<00:07,  1.99it/s, CE: 1.0556 SPCL: 0.4739]train:  50%|██████████████████████████████████                                  | 14/28 [00:07<00:07,  1.99it/s, CE: 0.4499 SPCL: 0.8492]train:  54%|████████████████████████████████████▍                               | 15/28 [00:07<00:06,  2.02it/s, CE: 0.4499 SPCL: 0.8492]train:  54%|████████████████████████████████████▍                               | 15/28 [00:07<00:06,  2.02it/s, CE: 1.1987 SPCL: 0.4330]train:  57%|██████████████████████████████████████▊                             | 16/28 [00:07<00:05,  2.01it/s, CE: 1.1987 SPCL: 0.4330]train:  57%|██████████████████████████████████████▊                             | 16/28 [00:08<00:05,  2.01it/s, CE: 1.0860 SPCL: 0.4715]train:  61%|█████████████████████████████████████████▎                          | 17/28 [00:08<00:05,  2.03it/s, CE: 1.0860 SPCL: 0.4715]train:  61%|█████████████████████████████████████████▎                          | 17/28 [00:08<00:05,  2.03it/s, CE: 0.6332 SPCL: 0.7215]train:  64%|███████████████████████████████████████████▋                        | 18/28 [00:08<00:04,  2.02it/s, CE: 0.6332 SPCL: 0.7215]train:  64%|███████████████████████████████████████████▋                        | 18/28 [00:08<00:04,  2.02it/s, CE: 1.2357 SPCL: 0.5768]train:  68%|██████████████████████████████████████████████▏                     | 19/28 [00:09<00:04,  2.09it/s, CE: 1.2357 SPCL: 0.5768]train:  68%|██████████████████████████████████████████████▏                     | 19/28 [00:09<00:04,  2.09it/s, CE: 0.7749 SPCL: 0.5790]train:  71%|████████████████████████████████████████████████▌                   | 20/28 [00:09<00:03,  2.03it/s, CE: 0.7749 SPCL: 0.5790]train:  71%|████████████████████████████████████████████████▌                   | 20/28 [00:09<00:03,  2.03it/s, CE: 0.9946 SPCL: 0.4998]train:  75%|███████████████████████████████████████████████████                 | 21/28 [00:10<00:03,  2.06it/s, CE: 0.9946 SPCL: 0.4998]train:  75%|███████████████████████████████████████████████████                 | 21/28 [00:10<00:03,  2.06it/s, CE: 1.0513 SPCL: 0.4711]train:  79%|█████████████████████████████████████████████████████▍              | 22/28 [00:10<00:02,  2.01it/s, CE: 1.0513 SPCL: 0.4711]train:  79%|█████████████████████████████████████████████████████▍              | 22/28 [00:10<00:02,  2.01it/s, CE: 0.8325 SPCL: 0.6243]train:  82%|███████████████████████████████████████████████████████▊            | 23/28 [00:11<00:02,  2.00it/s, CE: 0.8325 SPCL: 0.6243]train:  82%|███████████████████████████████████████████████████████▊            | 23/28 [00:11<00:02,  2.00it/s, CE: 0.8409 SPCL: 0.5490]train:  86%|██████████████████████████████████████████████████████████▎         | 24/28 [00:11<00:02,  1.97it/s, CE: 0.8409 SPCL: 0.5490]train:  86%|██████████████████████████████████████████████████████████▎         | 24/28 [00:11<00:02,  1.97it/s, CE: 0.7482 SPCL: 0.6158]train:  89%|████████████████████████████████████████████████████████████▋       | 25/28 [00:12<00:01,  1.95it/s, CE: 0.7482 SPCL: 0.6158]train:  89%|████████████████████████████████████████████████████████████▋       | 25/28 [00:12<00:01,  1.95it/s, CE: 1.0108 SPCL: 0.4675]train:  93%|███████████████████████████████████████████████████████████████▏    | 26/28 [00:12<00:01,  1.99it/s, CE: 1.0108 SPCL: 0.4675]train:  93%|███████████████████████████████████████████████████████████████▏    | 26/28 [00:12<00:01,  1.99it/s, CE: 0.6688 SPCL: 0.7123]train:  96%|█████████████████████████████████████████████████████████████████▌  | 27/28 [00:13<00:00,  1.99it/s, CE: 0.6688 SPCL: 0.7123]train:  96%|█████████████████████████████████████████████████████████████████▌  | 27/28 [00:13<00:00,  1.99it/s, CE: 0.4174 SPCL: 0.9360]train: 100%|████████████████████████████████████████████████████████████████████| 28/28 [00:13<00:00,  2.11it/s, CE: 0.4174 SPCL: 0.9360]train: 100%|████████████████████████████████████████████████████████████████████| 28/28 [00:13<00:00,  2.05it/s, CE: 0.4174 SPCL: 0.9360]
-tensor([[ True,  True, False, False, False, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True, False, False, False, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False,  True,  True, False,  True,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True, False, False, False,  True,  True,
-         False, False, False,  True, False, False, False, False],
-        [ True, False,  True,  True, False,  True,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True, False,  True,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True, False, False, False,  True,  True,
-         False, False, False,  True, False, False, False, False],
-        [ True, False,  True,  True, False,  True,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True, False,  True,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True, False,  True,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True, False, False, False,  True,  True,
-         False, False, False,  True, False, False, False, False],
-        [False,  True, False, False,  True, False, False, False,  True,  True,
-         False, False, False,  True, False, False, False, False],
-        [ True, False,  True,  True, False,  True,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True, False,  True,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False,  True, False, False, False,  True, False, False, False,
-         False,  True, False, False, False, False, False,  True],
-        [ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False,  True, False, False, False,  True, False, False, False,
-         False,  True, False, False, False, False, False,  True],
-        [ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True,  True, False,  True,  True,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False,  True, False, False, False,  True, False, False, False,
-         False,  True, False, False, False, False, False,  True]],
-       device='cuda:0')
-tensor([[ True,  True, False,  True,  True, False,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True, False,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True, False, False,  True, False, False, False,  True,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True, False,  True,  True, False,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True, False,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True, False, False,  True, False, False, False,  True,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True, False,  True,  True, False,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True, False,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False,  True, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False,  True, False, False,  True, False, False, False,  True,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True, False,  True,  True, False,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True, False,  True,  True, False,  True,  True, False, False,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True,  True,  True,  True,  True, False, False, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True,  True, False, False, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True,  True, False, False, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True,  True, False, False, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True,  True, False, False, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True,  True, False, False, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False, False, False, False, False,  True,  True,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False, False, False, False,  True,  True,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False, False, False, False,  True,  True,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True,  True,  True, False, False, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True,  True, False, False, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False,
-         False,  True, False, False, False, False, False,  True]],
-       device='cuda:0')
-tensor([[ True,  True,  True,  True, False, False, False,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True, False, False, False,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True, False, False, False,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True, False, False, False,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False, False,  True, False,  True, False,  True,  True,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False, False, False,  True, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False, False, False,  True, False,  True, False,  True,  True,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True, False, False, False,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False, False,  True, False,  True, False,  True,  True,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False, False,  True, False,  True, False,  True,  True,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True, False, False, False,  True, False, False,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True, False, False, False,  True, False, False,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False,  True, False, False,  True,  True, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True, False, False, False, False, False,  True, False, False,
-         False, False, False, False, False, False, False,  True],
-        [ True, False,  True, False, False,  True,  True, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False,  True,  True, False, False, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True, False, False, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True, False, False,  True,  True, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [ True, False,  True, False, False,  True,  True, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True, False, False, False, False, False,  True, False, False,
-         False, False, False, False, False, False, False,  True],
-        [ True, False,  True, False, False,  True,  True, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False,  True,  True, False, False, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True, False, False, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True, False, False, False, False,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True,  True, False,  True, False,  True,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True, False,  True, False,  True,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True, False,  True, False,  True,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False, False,  True, False,  True, False, False,  True, False,
-         False,  True, False,  True, False, False, False, False],
-        [ True,  True,  True, False,  True, False,  True,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False, False,  True, False,  True, False, False,  True, False,
-         False,  True, False,  True, False, False, False, False],
-        [ True,  True,  True, False,  True, False,  True,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True, False,  True, False,  True,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False, False,  True, False,  True, False, False,  True, False,
-         False,  True, False,  True, False, False, False, False],
-        [ True,  True,  True, False,  True, False,  True,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True,  True, False,  True, False,  True,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False, False,  True, False,  True, False, False,  True, False,
-         False,  True, False,  True, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False, False,  True, False,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False, False, False, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False,  True, False,  True, False, False,  True,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [ True, False, False,  True, False,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True, False,  True, False, False,  True,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [ True, False, False,  True, False,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False, False,  True, False,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True, False,  True, False, False,  True,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False,  True, False,  True, False, False,  True,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [ True, False, False,  True, False,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False, False,  True, False,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False, False,  True, False,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False, False,  True, False,  True, False, False,  True,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True, False, False,  True, False, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False,  True, False, False, False,  True,  True, False, False,
-         False,  True,  True, False, False, False, False, False],
-        [ True, False, False,  True, False,  True, False, False,  True,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True, False, False,  True, False, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [ True, False, False,  True, False,  True, False, False,  True,  True,
-          True, False, False,  True, False, False, False, False],
-        [False, False,  True, False, False, False,  True,  True, False, False,
-         False,  True,  True, False, False, False, False, False],
-        [False, False,  True, False, False, False,  True,  True, False, False,
-         False,  True,  True, False, False, False, False, False],
-        [ True, False, False,  True, False,  True, False, False,  True,  True,
-          True, False, False,  True, False, False, False, False],
-        [ True, False, False,  True, False,  True, False, False,  True,  True,
-          True, False, False,  True, False, False, False, False],
-        [ True, False, False,  True, False,  True, False, False,  True,  True,
-          True, False, False,  True, False, False, False, False],
-        [False, False,  True, False, False, False,  True,  True, False, False,
-         False,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False,  True,  True, False, False, False,  True, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True, False, False,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True, False, False, False,  True, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True, False,  True,  True, False, False, False,  True, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True, False, False,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True, False, False, False,  True, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True, False, False,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False,  True, False, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False,  True, False, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False,  True, False, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True,  True, False,  True,  True, False,  True,
-         False,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False,  True,  True, False, False,  True, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True, False, False,  True,  True, False, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True, False, False,  True, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True, False,  True,  True, False, False,  True, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True, False, False,  True,  True, False, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True, False, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True, False, False,  True, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False, False, False, False, False,  True, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False,  True, False, False,  True,  True, False, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True, False, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True, False, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True,  True, False, False,  True,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True,  True, False, False, False, False,  True, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False, False, False,  True, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False, False, False,  True, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True, False,  True, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False,  True,  True, False,  True, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False, False, False,  True, False, False,  True, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False, False,  True,  True, False,  True, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True, False, False, False, False,  True, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False,  True, False, False,  True, False,
-         False, False, False, False, False, False, False,  True],
-        [ True,  True,  True, False, False, False, False,  True, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False, False, False,  True, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False, False, False,  True, False,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False, False, False, False, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True, False,  True, False, False, False,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True, False,  True, False, False, False,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False,  True, False, False,  True, False, False,  True, False,
-         False,  True, False,  True, False, False, False, False],
-        [ True,  True, False,  True, False, False, False,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False, False, False,  True, False,  True, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False,  True, False, False,  True, False, False,  True, False,
-         False,  True, False,  True, False, False, False, False],
-        [False, False, False, False,  True, False,  True, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [ True,  True, False,  True, False, False, False,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False,  True, False, False,  True, False, False,  True, False,
-         False,  True, False,  True, False, False, False, False],
-        [ True,  True, False,  True, False, False, False,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [ True,  True, False,  True, False, False, False,  True, False,  True,
-          True, False,  True, False, False, False, False, False],
-        [False, False,  True, False, False,  True, False, False,  True, False,
-         False,  True, False,  True, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True, False, False, False, False, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [ True,  True, False, False, False, False, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False,  True,  True,  True,  True,  True, False, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True, False, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True, False, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True, False, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True, False, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False, False, False,  True,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [False, False, False, False, False, False, False,  True,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True, False, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False, False, False,  True,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [False, False,  True,  True,  True,  True,  True, False, False,  True,
-         False,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False, False, False, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False, False, False,  True, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False,  True,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False, False, False, False, False,  True, False,  True, False,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [ True, False, False, False, False, False,  True, False,  True, False,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [ True, False, False, False, False, False,  True, False,  True, False,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [ True, False, False, False, False, False,  True, False,  True, False,
-         False,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-Gradient overflow.  Skipping step, loss scaler 0 reducing loss scale to 32768.0
-tensor([[ True, False, False, False, False, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True, False, False, False, False, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True, False, False, False, False, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True, False, False, False, False, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True,  True,  True,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True,  True, False, False, False,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False, False,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False, False,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True,  True, False, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False,  True,  True,  True, False, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False,  True,  True,  True, False, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True, False, False, False,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False, False, False,  True, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False, False,  True,  True,  True, False, False,  True, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True, False, False, False,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False, False,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False, False,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True,  True,  True,  True, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True,  True, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True,  True, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True,  True, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True,  True,  True,  True,  True, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False, False, False, False,  True,  True,  True,  True,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False,  True,  True,  True,  True,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False,  True,  True,  True,  True,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False,  True,  True,  True,  True,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False,  True,  True,  True,  True,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False,
-          True, False, False, False, False, False, False,  True],
-        [False, False, False, False, False,  True,  True,  True,  True,  True,
-         False,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False, False, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False, False, False, False, False,  True,  True, False,
-         False, False, False, False, False, False, False,  True],
-        [False, False, False, False, False, False, False,  True,  True, False,
-         False, False, False, False, False, False, False,  True],
-        [ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False],
-        [ True, False,  True,  True,  True,  True,  True, False, False,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True,  True, False, False,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [ True,  True,  True, False, False,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [False, False, False,  True,  True, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [ True,  True,  True, False, False,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [ True,  True,  True, False, False,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [ True,  True,  True, False, False,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False],
-        [False, False, False,  True,  True, False,  True, False,  True, False,
-          True, False, False,  True, False, False, False, False],
-        [ True,  True,  True, False, False,  True, False,  True, False,  True,
-         False,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False, False, False, False, False, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False,  True, False, False,  True, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True, False, False,  True, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False,  True,  True, False,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False, False,  True,  True,  True,  True, False, False, False,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False, False, False, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True, False, False, False, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [ True, False, False,  True,  True,  True,  True, False, False, False,
-         False,  True,  True, False, False, False, False, False],
-        [ True, False, False,  True,  True,  True,  True, False, False, False,
-         False,  True,  True, False, False, False, False, False],
-        [ True, False, False,  True,  True,  True,  True, False, False, False,
-         False,  True,  True, False, False, False, False, False],
-        [ True, False, False,  True,  True,  True,  True, False, False, False,
-         False,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False, False, False, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [False, False, False, False, False, False, False, False,  True, False,
-         False, False, False, False, False, False, False,  True],
-        [False,  True,  True, False, False, False, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [False,  True,  True, False, False, False, False,  True, False,  True,
-          True, False, False,  True, False, False, False, False],
-        [ True, False, False,  True,  True,  True,  True, False, False, False,
-         False,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True, False, False, False, False, False, False, False, False, False,
-         False, False, False, False, False, False, False,  True],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False, False, False,  True, False, False, False, False, False, False,
-         False, False, False,  True, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False],
-        [False,  True,  True, False,  True,  True,  True,  True,  True,  True,
-          True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-tensor([[ True,  True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True, False, False, False, False, False],
-        [ True,  True,  True,  True, False, False, False, False, False]],
-       device='cuda:0')
-Epoch 000 average loss 1.5429
-Traceback (most recent call last):
-  File "main.py", line 202, in <module>
-    valid_it = valid_loader if args.dont_show else tqdm.tqdm(valid_it, desc="validate")
-NameError: name 'valid_it' is not defined

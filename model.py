@@ -9,13 +9,15 @@ from transformers.models.roberta.modeling_roberta import RobertaModel, RobertaLa
 
 class ATModel(PreTrainedModel):
     config_class = ATConfig
-    _keys_to_ignore_on_load_missing = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head"]
+    _keys_to_ignore_on_load_missing = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head", r"position_ids", r"mask_token"]
     # _keys_to_ignore_on_save = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head"]
+    _keys_to_ignore_on_load_unexpected = [r"masked_spec_embed"]
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: ATConfig, audio=None, text=None):
+    def __init__(self, config: ATConfig, audio=None, text=None, train=True):
         super(ATModel, self).__init__(config)
         self.hidden_size = config.text.hidden_size
+        self.train = train
 
         if audio is None:
             self.audio_encoder = WavLMForMultiTurn(config.audio)
@@ -45,15 +47,18 @@ class ATModel(PreTrainedModel):
         audio_len = audio_features.shape[2]
         token_type_ids = torch.zeros([bs * 4, text_len + audio_len], dtype=torch.long).to(audio_mask.device)
         token_type_ids[:, text_len:] = 1
-        fused_input = self.fuse_four(text_features, audio_features, bs, text_len, audio_len, token_type_ids)
-        fused_attention_mask = self.fuse_four(text_mask, audio_mask, bs, text_len, audio_len)
+        if self.train:
+            fused_input = self.fuse_four(text_features, audio_features, bs, text_len, audio_len, token_type_ids)
+            fused_attention_mask = self.fuse_four(text_mask, audio_mask, bs, text_len, audio_len)
+        else:
+            fused_input = torch.cat([text_features, audio_features], dim=1) + self.token_type_embeddings(token_type_ids)
+            fused_attention_mask = torch.cat([text_mask, audio_mask], dim=1).to(dtype=text_features.dtype)
         fused_attention_mask = (1.0 - fused_attention_mask[:, None, None, :]) * torch.finfo(text_features.dtype).min
         return fused_input, fused_attention_mask.half()
 
     def forward(self, audio_input, text_input, audio_attention_mask=None, text_attention_mask=None, turn_id=None, mask_modeling=False):
         # audio: 3B * 160000  text: 2B * 514  mlm_label: B * 514  turn_id: B * 514
-        out = self.audio_encoder(audio_input, audio_attention_mask, perform_mam=mask_modeling,
-                                 token_embedding=self.text_encoder.embeddings.token_type_embeddings)
+        out = self.audio_encoder(audio_input, audio_attention_mask, perform_mam=mask_modeling, token_embedding=self.text_encoder.embeddings.token_type_embeddings)
         audio_features, audio_mask = out[:2]
         # audio_features: 2B * 200 * 768  audio_mask: 2B * 200  mam_label: B * 200  a_masked: B * 200
         text_features = self.text_encoder(text_input, text_attention_mask, token_type_ids=turn_id)[0]

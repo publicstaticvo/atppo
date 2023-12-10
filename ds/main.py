@@ -1,59 +1,50 @@
 import os
-import re
+import sys
+import math
 import tqdm
 import time
-import torch
 import random
 import argparse
 import numpy as np
-import torch.distributed as dist
 from apex import amp
 from apex.optimizers import FusedAdam
+from modeling_at import ATForSequenceClassification
 from torch.nn.parallel import DistributedDataParallel as DDP
-from dataset import DownstreamDataset, DataCollatorForDownstream
+from ds_dataloader import DownstreamDataset, DataCollatorForDownstream
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 from transformers import RobertaTokenizerFast, get_linear_schedule_with_warmup
 from downstream_metrics import downstream_metrics
 from sklearn.metrics import accuracy_score
-from utils import ATConfig, get_rank
-from model import DownstreamModel
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
+from util import *
 
 os.environ["NCCL_DEBUG"] = "WARN"
 LABEL_NUM = {'mosi': 1, 'meld': 7, 'snips': 7, 'mosei': 1, 'mintrec': 20, 'iemocap': 6}
 KEY_METRIC_INDEX = {'mosi': 5, 'meld': 1, 'mosei': 5, 'mintrec': 1, 'iemocap': 1}
-model_has_audio_cls = [r"v1\.3\.[3-9]", r"v2\.3", r"v3", r"v4"]
-v2_ckpt = ["v2", "v3.2", "v3.3", "v4"]
-SYSTEM = "/mnt/ewwe/yts"
+DATA_PATH = "/mnt/ewwe/yts/at/"
+MODEL_PATH = "/mnt/ewwe/yts/at/atppo/saved_models"
+RESULT_PATH = "/mnt/ewwe/yts/at/atppo/ds/results"
 SAMPLE_RATE = 16000
 CONFIG = "config.json"
 
 if __name__ == '__main__':
     # 1. arguments and config
+    # 默认参数为：iemocap使用multi audio和audio的token type id，数据集使用V2数据集，没有CL、情绪盘等复杂内容。
     parser = argparse.ArgumentParser()
     parser.add_argument('--accumulate_num', type=int, default=1)
-    parser.add_argument('--audio_path', type=str, default="models/wavlm-base-plus")
     parser.add_argument("--audio_length", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--cl_mode", type=str, default="no", choices=['no', 'step', 'epoch'])
-    parser.add_argument("--cl_steps", type=int, default=3)
-    parser.add_argument("--dont_show", action="store_true")
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--last_conv_layer", type=str, default="no", choices=["no", "layer", "group"])
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument('--lr', type=float, default=2e-5)
+    parser.add_argument('--min_text_length', type=int, default=2)
     parser.add_argument('--model', type=str, required=True)
-    parser.add_argument("--multi_audio", action="store_true")
     parser.add_argument('--output_file', type=str, default="results.csv")
-    parser.add_argument("--patience", type=int, default=5)
-    parser.add_argument("--pretrain_data", type=int, default=960)
-    parser.add_argument("--prompt", action="store_true")
     parser.add_argument("--save_epoch", type=int, default=-1)
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--system', type=str, default="")
     parser.add_argument("--task", type=str, choices=['iemocap', 'mosi', 'meld', 'mintrec', 'mosei'])
-    parser.add_argument('--text_path', type=str, default="models/roberta-base")
-    parser.add_argument('--train_mode', type=str, default="")
-    parser.add_argument("--use_turn_ids", action="store_true")
+    parser.add_argument('--tokenizer', type=str, required=True)
     parser.add_argument('--warmup', type=float, default=0.)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     args = parser.parse_args()
@@ -65,32 +56,16 @@ if __name__ == '__main__':
         torch.cuda.set_device(args.local_rank)
         args.device = torch.device("cuda", args.local_rank)
         dist.init_process_group(backend="nccl", init_method='env://')
-    if args.system:
-        SYSTEM = args.system
     audio_length = SAMPLE_RATE * args.audio_length
-    model_name = args.model.split('/')[-1]
     if get_rank() == 0:
-        print(f"Model {model_name} datasize {args.pretrain_data} batchsize {args.batch_size} epochs {args.epochs}"
-              f" lr {args.lr:.1e} gradacc {args.accumulate_num} task {args.task} last_conv_layer {args.last_conv_layer}"
-              f" cl_mode {args.cl_mode} cl_steps {args.cl_steps} prompt {args.prompt} train_mode {args.train_mode}")
-    model_name = model_name.split('-')
-    args.audio_path, args.output_file, args.text_path = map(
-        lambda x: os.path.join(SYSTEM, x),
-        [args.audio_path, args.output_file, args.text_path])
-    args.model = os.path.join("/mnt/shared/public/yts/Audio-Text-Pretraining", args.model)
-    large = "L" in model_name[0]
+        print(f"Model {args.model} batchsize {args.batch_size} epochs {args.epochs} lr {args.lr:.1e} gradacc {args.accumulate_num} task {args.task} scheduler_type {args.warmup}")
+    args.tokenizer = os.path.join(DATA_PATH, args.tokenizer)
+    args.output_file = os.path.join(RESULT_PATH, args.output_file)
+    args.model = os.path.join(MODEL_PATH, args.model)
     label_num = LABEL_NUM[args.task]
-    v2 = any(n in model_name[0] for n in v2_ckpt)
-    try:
-        config = ATConfig.from_pretrained(args.model, return_kwargs=False)
-    except:
-        config = ATConfig.from_json_files(os.path.join(args.audio_path, CONFIG), os.path.join(args.text_path, CONFIG))
-    config.audio.has_audio_cls = any(re.search(s, model_name[0]) for s in model_has_audio_cls)
-    config.audio.use_turn_ids = args.multi_audio or args.use_turn_ids
-    config.audio.last_conv_layer = args.last_conv_layer
-    config.audio.multi_turn = args.multi_audio
+    config = ATConfig.from_pretrained(args.model, return_kwargs=False)
     config.set_length(audio_length, 512)
-    tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
+    tokenizer = RobertaTokenizerFast.from_pretrained(args.tokenizer)
     # 2. seed
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -98,10 +73,7 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     # 3. load model
-    turn_embeddings = torch.load(os.path.join(SYSTEM, "models/bert-base/pytorch_model.bin")).pop("bert.embeddings.token_type_embeddings.weight") if "v3" not in model_name[0] else None
-    print(f"has_audio_cls {config.audio.has_audio_cls} multi audio {config.audio.multi_turn} v2 {v2}" 
-           f"prompt {args.prompt} bert {turn_embeddings is not None} scheduler_type {args.warmup}")
-    model = DownstreamModel(args.model, config, label_num, turn_embeddings=turn_embeddings).to(args.device)
+    model = ATForSequenceClassification(args.model, config, label_num).to(args.device)
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
         {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
@@ -111,20 +83,18 @@ if __name__ == '__main__':
     optimizer = FusedAdam(optimizer_grouped_parameters, lr=args.lr, bias_correction=False)
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1", loss_scale="dynamic")
     # 4. dataset
-    c = DataCollatorForDownstream(audio_length, args.task in ["mosi", "mosei"], 180 if args.multi_audio else 90, args.prompt)
-    train_data = DownstreamDataset(SYSTEM, args.task, "train", args.train_mode, tokenizer, v2, args.prompt, args.multi_audio)
+    c = DataCollatorForDownstream(audio_length, args.task in ["mosi", "mosei"], args.min_text_length)
+    train_data = DownstreamDataset(DATA_PATH, args.task, "train")
     if n_gpu > 1:
         model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
-        train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c,
-                                  sampler=DistributedSampler(train_data), pin_memory=True)
+        train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c, sampler=DistributedSampler(train_data), pin_memory=True, num_workers=20)
     else:
-        train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c,
-                                  sampler=RandomSampler(train_data))
-    valid_loader = DataLoader(dataset=DownstreamDataset(SYSTEM, args.task, "valid", args.train_mode, tokenizer, v2, args.prompt, args.multi_audio), batch_size=args.batch_size, collate_fn=c)
-    test_loader = DataLoader(dataset=DownstreamDataset(SYSTEM, args.task, "test", args.train_mode, tokenizer, v2, args.prompt, args.multi_audio), batch_size=args.batch_size, collate_fn=c)
+        train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data), num_workers=20)
+    valid_loader = DataLoader(dataset=DownstreamDataset(DATA_PATH, args.task, "valid"), batch_size=args.batch_size, collate_fn=c)
+    test_loader = DataLoader(dataset=DownstreamDataset(DATA_PATH, args.task, "test"), batch_size=args.batch_size, collate_fn=c)
     # 5. scheduler
     if args.warmup > 0:
-        steps = args.epochs * ((len(train_data) - 1) // args.batch_size // args.accumulate_num // max(1, n_gpu) + 1)
+        steps = args.epochs * math.ceil(len(train_data) / args.batch_size / args.accumulate_num / max(1, n_gpu))
         warmup_steps = int(args.warmup * steps)
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=steps)
     else:
@@ -134,11 +104,9 @@ if __name__ == '__main__':
     early_stop_metric = [-10.0, 0.0, 0.0, 0.0] if args.task in ["mosi", "mosei"] else [-10.0, 0.0, 0.0]
     equal = [False for _ in early_stop_metric]
     best_epoch = 0
-    progress = 0
     best_metrics = []
-    if args.cl_mode == "step":
-        args.cl_steps = args.cl_steps * len(train_loader)
     for epoch in range(args.epochs):
+        # train
         model.train()
         epoch_train_loss = []
         time.sleep(1)
@@ -159,10 +127,9 @@ if __name__ == '__main__':
                 optimizer.step()
                 optimizer.zero_grad()
                 scheduler.step()
-            if args.cl_mode == "step":
-                progress += 1
         if not args.dont_show and n_gpu <= 1:
             print(f"Epoch {epoch:03d} average loss {torch.mean(torch.tensor(epoch_train_loss)):.4f}")
+        # validation
         model.eval()
         epoch_val_loss = []
         pred_y, true_y = [], []
@@ -198,12 +165,13 @@ if __name__ == '__main__':
         if not args.dont_show and get_rank() == 0:
             print(f"Epoch {epoch:03d} average valid loss {average_valid_loss:.4f} valid accuracy {val_acc:.4f} "
                   f"early stop {metrics[-1]:.4f}")
+        # test
         pred_y, true_y = [], []
         with torch.no_grad():
             time.sleep(1)
             for batch in test_loader:
                 batch = {k: (v.to(args.device) if v is not None else None) for k, v in batch.items()}
-                logits = model(batch["audio"], batch["text"], batch["aam"], batch["tam"], batch["turn_id"], prompt=batch["prompt"])
+                logits = model(batch["audio"], batch["text"], batch["aam"], batch["tam"], batch["turn_id"])
                 if label_num == 1:
                     prediction = logits.view(-1)
                     label_outputs = prediction.cpu().detach().numpy().astype(float)
@@ -223,17 +191,12 @@ if __name__ == '__main__':
                     experiment_data[i] = [epoch + 1] + result
                 if not best_metrics or best_metrics[KEY_METRIC_INDEX[args.task]] <= result[KEY_METRIC_INDEX[args.task] - 1]:
                     best_metrics = [epoch + 1] + result
-        if args.cl_mode == "epoch":
-            progress += 1
         if epoch - best_epoch == args.patience or (early_stop_metric[-1] == 0.0 and epoch == 2):
             if get_rank() == 0:
                 print(f"early stopping at {epoch + 1}")
             break
     if get_rank() == 0:
-        params = ['-'.join([model_name[0], model_name[-1]]), str(args.pretrain_data), str(args.batch_size * n_gpu),
-                  str(args.epochs), str(args.lr), str(args.accumulate_num), str(args.seed), args.task, args.last_conv_layer,
-                  str(args.multi_audio), str(args.warmup), str(v2), str(args.prompt), args.cl_mode, str(args.cl_steps), args.train_mode]
+        params = [args.model, str(args.batch_size * n_gpu), str(args.epochs), str(args.lr), str(args.accumulate_num), args.task, str(args.warmup)]
         experiment_data.append(best_metrics)
         with open(args.output_file, "a+") as f:
-            f.write("\n" + ",".join(params + [",".join([f"{r}" if isinstance(r, int) else f"{r:.4g}" for r in exp])
-                                              for exp in experiment_data]))
+            f.write("\n" + ",".join(params + [",".join([f"{r}" if isinstance(r, int) else f"{r:.4g}" for r in exp]) for exp in experiment_data]))
