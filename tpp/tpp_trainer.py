@@ -24,20 +24,23 @@ class ATForTPP(PreTrainedModel):
         self.mlm_head = RobertaLMHead(config.text)
         self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
         self.selection_head = nn.Linear(self.hidden_size, 4)
-        self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, 1))
-        self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, 1))
+        self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, config.num_ends))
+        self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, config.num_ends))
         self.vocab_size = config.text.vocab_size
+        self.num_ends = config.num_ends
         # self.conv_dim = config.audio.conv_dim[-1]
         self.ce = torch.nn.CrossEntropyLoss()
         self.l1 = torch.nn.L1Loss()
-        # self.temperature = 0.05
+        self.temperature = 1 / 15
 
     def tpp_loss(self, text_fused, start_valid=None, end_valid=None, starts=None, ends=None):
         words = text_fused.masked_select(start_valid.unsqueeze(-1)).view(-1, self.hidden_size)
         pred_start = self.start_prediction_head(words).squeeze(-1)
         words = text_fused.masked_select(end_valid.unsqueeze(-1)).view(-1, self.hidden_size)
         pred_end = self.end_prediction_head(words).squeeze(-1)
-        return torch.mean(torch.pow(torch.cat([starts, ends]) - torch.cat([pred_start, pred_end]), 2))
+        if self.num_ends == 1:
+            return torch.mean(torch.pow(torch.cat([starts, ends]) - torch.cat([pred_start, pred_end]), 2))
+        return self.ce(torch.cat([starts, ends], dim=-2), torch.cat([pred_start, pred_end]))
 
     def forward(self, audio_input, text_input, audio_attention_mask, text_attention_mask, mlm_label=None,
                 turn_id=None, start_valid=None, end_valid=None, starts=None, ends=None):

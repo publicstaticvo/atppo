@@ -43,6 +43,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", default=None, type=str)
     parser.add_argument("--model_save_path", default=None, type=str)
     parser.add_argument("--no_pretrain", action='store_true')
+    parser.add_argument("--num_ends", default=1, type=int)
     parser.add_argument("--num_turns", default=8, type=int)
     parser.add_argument("--num_fused_layers", default=1, type=int)
     parser.add_argument("--save_interval", default=100, type=int)
@@ -55,6 +56,8 @@ if __name__ == "__main__":
     parser.add_argument("--warmup", default=0.01, type=float)
     parser.add_argument("--weight_decay", default=0.01, type=float)
     args = parser.parse_args()
+    if args.num_ends != 1:
+        assert args.num_ends == args.audio_length * 10
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_epochs = args.train_epochs - args.current_epochs
     if not torch.cuda.is_available():
@@ -82,6 +85,7 @@ if __name__ == "__main__":
         config = ATConfig.from_json_files(os.path.join(args.audio_path, CONFIG), os.path.join(args.text_path, CONFIG))
         config.set_length(int(args.audio_length * SAMPLE_RATE), args.text_length)
         config.fused.num_hidden_layers = args.num_fused_layers
+        config.fused.num_ends = args.num_ends
     tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
     # 4。读输入数据
     train_data = TPPDataset(read_processed_pretrain(args.transcripts), args.num_turns, args.file_prefix)
