@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import math
 import tqdm
@@ -22,7 +23,7 @@ from util import *
 os.environ["NCCL_DEBUG"] = "WARN"
 LABEL_NUM = {'mosi': 1, 'meld': 7, 'snips': 7, 'mosei': 1, 'mintrec': 20, 'iemocap': 6}
 KEY_METRIC_INDEX = {'mosi': 5, 'meld': 1, 'mosei': 5, 'mintrec': 1, 'iemocap': 1}
-DATA_PATH = "/mnt/ewwe/yts/at/"
+DATA_PATH = "/mnt/shared/yts"
 MODEL_PATH = "/mnt/ewwe/yts/at/atppo/saved_models"
 RESULT_PATH = "/mnt/ewwe/yts/at/atppo/ds/results"
 SAMPLE_RATE = 16000
@@ -35,23 +36,23 @@ if __name__ == '__main__':
     parser.add_argument('--accumulate_num', type=int, default=1)
     parser.add_argument("--audio_length", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument('--dont_show', action="store_true")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument('--lr', type=float, default=2e-5)
     parser.add_argument('--min_text_length', type=int, default=2)
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--output_file', type=str, default="results.csv")
+    parser.add_argument('--patience', type=int, default=10)
     parser.add_argument("--save_epoch", type=int, default=-1)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument("--task", type=str, choices=['iemocap', 'mosi', 'meld', 'mintrec', 'mosei'])
-    parser.add_argument('--tokenizer', type=str, required=True)
+    parser.add_argument('--tokenizer', type=str, default="/mnt/ewwe/yts/at/models/robertaForV3")
     parser.add_argument('--warmup', type=float, default=0.)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     args = parser.parse_args()
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     n_gpu = torch.cuda.device_count()
-    if n_gpu == 0:
-        args.apex_level = 0
     if args.local_rank >= 0:
         torch.cuda.set_device(args.local_rank)
         args.device = torch.device("cuda", args.local_rank)
@@ -59,11 +60,12 @@ if __name__ == '__main__':
     audio_length = SAMPLE_RATE * args.audio_length
     if get_rank() == 0:
         print(f"Model {args.model} batchsize {args.batch_size} epochs {args.epochs} lr {args.lr:.1e} gradacc {args.accumulate_num} task {args.task} scheduler_type {args.warmup}")
-    args.tokenizer = os.path.join(DATA_PATH, args.tokenizer)
     args.output_file = os.path.join(RESULT_PATH, args.output_file)
     args.model = os.path.join(MODEL_PATH, args.model)
     label_num = LABEL_NUM[args.task]
-    config = ATConfig.from_pretrained(args.model, return_kwargs=False)
+    config = ATConfig.from_pretrained(args.model, return_unused_kwargs=False)
+    config.audio.train_mode = 2 if args.task in ["meld", "iemocap"] else 1
+    config.fused.num_hidden_layers = 1
     config.set_length(audio_length, 512)
     tokenizer = RobertaTokenizerFast.from_pretrained(args.tokenizer)
     # 2. seed
@@ -73,7 +75,11 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     # 3. load model
-    model = ATForSequenceClassification(args.model, config, label_num).to(args.device)
+    if int(re.findall(r"v([1-9])", args.model)[0]) >= 5:
+        model = ATForSequenceClassification.from_pretrained(args.model, config=config, num_class=label_num).to(args.device)
+    else:
+        model = ATForSequenceClassification(ckpt_path=args.model, config=config, num_class=label_num).to(args.device)
+    # print(next(model.named_parameters()))
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
         {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
@@ -81,15 +87,15 @@ if __name__ == '__main__':
         {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
     optimizer = FusedAdam(optimizer_grouped_parameters, lr=args.lr, bias_correction=False)
-    model, optimizer = amp.initialize(model, optimizer, opt_level="O1", loss_scale="dynamic")
+    model, optimizer = amp.initialize(model, optimizer, opt_level=f"O2", loss_scale="dynamic")
     # 4. dataset
     c = DataCollatorForDownstream(audio_length, args.task in ["mosi", "mosei"], args.min_text_length)
     train_data = DownstreamDataset(DATA_PATH, args.task, "train")
     if n_gpu > 1:
         model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
-        train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c, sampler=DistributedSampler(train_data), pin_memory=True, num_workers=20)
+        train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c, sampler=DistributedSampler(train_data), pin_memory=True)
     else:
-        train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data), num_workers=20)
+        train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data))
     valid_loader = DataLoader(dataset=DownstreamDataset(DATA_PATH, args.task, "valid"), batch_size=args.batch_size, collate_fn=c)
     test_loader = DataLoader(dataset=DownstreamDataset(DATA_PATH, args.task, "test"), batch_size=args.batch_size, collate_fn=c)
     # 5. scheduler

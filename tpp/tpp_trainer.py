@@ -10,7 +10,6 @@ from transformers.models.roberta.modeling_roberta import RobertaLMHead, RobertaE
 class ATForTPP(PreTrainedModel):
     config_class = ATConfig
     _keys_to_ignore_on_load_missing = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head"]
-    # _keys_to_ignore_on_save = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head"]
     supports_gradient_checkpointing = True
 
     def _set_gradient_checkpointing(self, module, value=False):
@@ -20,14 +19,14 @@ class ATForTPP(PreTrainedModel):
     def __init__(self, config: ATConfig, audio=None, text=None):
         super(ATForTPP, self).__init__(config)
         self.hidden_size = config.text.hidden_size
+        self.num_ends = config.fused.num_ends
         self.model = ATModel(config, audio, text)
         self.mlm_head = RobertaLMHead(config.text)
         self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
         self.selection_head = nn.Linear(self.hidden_size, 4)
-        self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, config.num_ends))
-        self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, config.num_ends))
+        self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
+        self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
         self.vocab_size = config.text.vocab_size
-        self.num_ends = config.num_ends
         # self.conv_dim = config.audio.conv_dim[-1]
         self.ce = torch.nn.CrossEntropyLoss()
         self.l1 = torch.nn.L1Loss()
@@ -40,7 +39,7 @@ class ATForTPP(PreTrainedModel):
         pred_end = self.end_prediction_head(words).squeeze(-1)
         if self.num_ends == 1:
             return torch.mean(torch.pow(torch.cat([starts, ends]) - torch.cat([pred_start, pred_end]), 2))
-        return self.ce(torch.cat([starts, ends], dim=-2), torch.cat([pred_start, pred_end]))
+        return self.ce(torch.cat([pred_start, pred_end], dim=0), torch.cat([starts, ends]))
 
     def forward(self, audio_input, text_input, audio_attention_mask, text_attention_mask, mlm_label=None,
                 turn_id=None, start_valid=None, end_valid=None, starts=None, ends=None):

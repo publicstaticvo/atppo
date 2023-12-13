@@ -14,10 +14,10 @@ class ATModel(PreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"masked_spec_embed"]
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: ATConfig, audio=None, text=None, train=True):
+    def __init__(self, config: ATConfig, audio=None, text=None, tpp=True):
         super(ATModel, self).__init__(config)
         self.hidden_size = config.text.hidden_size
-        self.train = train
+        self.tpp = tpp
 
         if audio is None:
             self.audio_encoder = WavLMForMultiTurn(config.audio)
@@ -39,7 +39,7 @@ class ATModel(PreTrainedModel):
             fused_input = fused_input.squeeze(-1)
         return fused_input
 
-    def get_fused_input(self, audio_features, audio_mask, text_features, text_mask):
+    def get_fused_input_for_tpp(self, audio_features, audio_mask, text_features, text_mask):
         bs = text_features.shape[0] // 2
         text_len = text_features.shape[1]
         audio_features = audio_features.view(bs, 2, -1, self.hidden_size)
@@ -47,14 +47,19 @@ class ATModel(PreTrainedModel):
         audio_len = audio_features.shape[2]
         token_type_ids = torch.zeros([bs * 4, text_len + audio_len], dtype=torch.long).to(audio_mask.device)
         token_type_ids[:, text_len:] = 1
-        if self.train:
-            fused_input = self.fuse_four(text_features, audio_features, bs, text_len, audio_len, token_type_ids)
-            fused_attention_mask = self.fuse_four(text_mask, audio_mask, bs, text_len, audio_len)
-        else:
-            fused_input = torch.cat([text_features, audio_features], dim=1) + self.token_type_embeddings(token_type_ids)
-            fused_attention_mask = torch.cat([text_mask, audio_mask], dim=1).to(dtype=text_features.dtype)
+        fused_input = self.fuse_four(text_features, audio_features, bs, text_len, audio_len, token_type_ids)
+        fused_attention_mask = self.fuse_four(text_mask, audio_mask, bs, text_len, audio_len).to(dtype=text_features.dtype)
         fused_attention_mask = (1.0 - fused_attention_mask[:, None, None, :]) * torch.finfo(text_features.dtype).min
-        return fused_input, fused_attention_mask.half()
+        return fused_input, fused_attention_mask
+
+    def get_fused_input(self, audio_features, audio_mask, text_features, text_mask):
+        bs, text_len = text_features.shape[:2]
+        token_type_ids = torch.zeros([bs, text_len + audio_features.shape[1]], dtype=torch.long).to(text_features.device)
+        token_type_ids[:, text_len:] = 1
+        fused_input = torch.cat([text_features, audio_features], dim=1) + self.token_type_embeddings(token_type_ids)
+        fused_attention_mask = torch.cat([text_mask, audio_mask], dim=1).to(dtype=text_features.dtype)
+        fused_attention_mask = (1.0 - fused_attention_mask[:, None, None, :]) * torch.finfo(text_features.dtype).min
+        return fused_input, fused_attention_mask
 
     def forward(self, audio_input, text_input, audio_attention_mask=None, text_attention_mask=None, turn_id=None, mask_modeling=False):
         # audio: 3B * 160000  text: 2B * 514  mlm_label: B * 514  turn_id: B * 514
@@ -63,7 +68,10 @@ class ATModel(PreTrainedModel):
         # audio_features: 2B * 200 * 768  audio_mask: 2B * 200  mam_label: B * 200  a_masked: B * 200
         text_features = self.text_encoder(text_input, text_attention_mask, token_type_ids=turn_id)[0]
         # text_features: 2B * 514 * 768
-        fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_attention_mask)
+        if self.tpp:
+            fused_input, fused_attention_mask = self.get_fused_input_for_tpp(audio_features, audio_mask, text_features, text_attention_mask)
+        else:
+            fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_attention_mask)
         fused_input = self.fused_encoder(fused_input, fused_attention_mask).last_hidden_state
         # for layer in self.fused_encoder:
         #     fused_input = layer(fused_input, fused_attention_mask)[0]

@@ -15,8 +15,8 @@ def compute_valid(transcript, offset, length, mode, audio_length):
         ev[offset + item[-3] - 1] = 1
         sl, el = float(f"{item[-2] / audio_length:.3f}"), float(f"{item[-1] / audio_length:.3f}")
         if mode:
-            tart_labels.append(int(sl * 1000))
-            end_labels.append(int(el * 1000) - 1)
+            start_labels.append(int(sl * 100))
+            end_labels.append(int(el * 100) - 1)
         else:
             start_labels.append(sl)
             end_labels.append(el)
@@ -64,8 +64,8 @@ class TPPDataset(Dataset):
 
 class DataCollatorForTPP:
     def __init__(self, tokenizer, config, fp16=False, mlm_prob=0.15):
-        self.audio_length = int(args.audio_length * SAMPLE_RATE)
-        self.mode = config.num_ends > 1
+        self.audio_length = config.audio.max_length
+        self.mode = config.fused.num_ends > 1
         self.tokenizer = tokenizer
         self.mlm_prob = mlm_prob
         self.config = config
@@ -146,5 +146,5 @@ class DataCollatorForTPP:
             lambda x: torch.stack(x, dim=0),
             [audios, a_mask, masked_text, text_labels, t_mask, start_valid, end_valid, token_type]
         )
-        starts, ends = map(lambda x: torch.tensor(x, dtype=audios.dtype), [starts, ends])
+        starts, ends = map(torch.LongTensor if self.mode else (lambda x: torch.tensor(x, dtype=audios.dtype)), [starts, ends])
         return audios, a_mask, masked_text, text_labels, t_mask, start_valid, end_valid, token_type, starts, ends

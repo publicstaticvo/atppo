@@ -56,6 +56,7 @@ if __name__ == "__main__":
     parser.add_argument("--warmup", default=0.01, type=float)
     parser.add_argument("--weight_decay", default=0.01, type=float)
     args = parser.parse_args()
+    n_gpu = torch.cuda.device_count()
     if args.num_ends != 1:
         assert args.num_ends == args.audio_length * 10
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -66,7 +67,6 @@ if __name__ == "__main__":
         torch.cuda.set_device(args.local_rank)
         args.device = torch.device("cuda", args.local_rank)
         dist.init_process_group(backend="nccl", init_method='env://')
-    n_gpu = dist.get_world_size()
     if args.ds_config == "default":
         args.ds_config = get_train_ds_config(args.batch_size, n_gpu, args.grad_acc, args.ds_stage, args.apex_level)
     elif args.ds_config:
@@ -86,6 +86,7 @@ if __name__ == "__main__":
         config.set_length(int(args.audio_length * SAMPLE_RATE), args.text_length)
         config.fused.num_hidden_layers = args.num_fused_layers
         config.fused.num_ends = args.num_ends
+    config.audio.train_mode = 3
     tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
     # 4。读输入数据
     train_data = TPPDataset(read_processed_pretrain(args.transcripts), args.num_turns, args.file_prefix)
@@ -120,14 +121,13 @@ if __name__ == "__main__":
             model, optimizer = amp.initialize(model, optimizer, opt_level=f"O{args.apex_level}",
                                               keep_batchnorm_fp32=False if args.apex_level >= 2 else None,
                                               loss_scale="dynamic" if args.loss_scale == 0. else args.loss_scale)
-        model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
+        if args.local_rank >= 0:
+            model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
     if args.local_rank >= 0:
         num_train_steps = math.ceil(num_train_steps / n_gpu)
-        train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size,
-                                  collate_fn=c, pin_memory=True, num_workers=20)
+        train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=10)
     else:
-        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c,
-                                  sampler=RandomSampler(train_data), num_workers=20)
+        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data))
     if args.grad_ckpt:
         if isinstance(model, DDP):
             model.module.gradient_checkpointing_enable()
@@ -145,9 +145,10 @@ if __name__ == "__main__":
         for j, batch in enumerate(inner_it):
             batch = tuple(t.to(args.device) for t in batch)
             a_input, a_mask, t_input, t_label, t_mask, s_valid, e_valid, token_type, starts, ends = batch
-            mlm_loss, mam_loss, rs_loss, span_loss = model(a_input, t_input, a_mask, t_mask, t_label, token_type,
-                                                           s_valid, e_valid, starts, ends)
-            loss = mlm_loss + mam_loss + rs_loss + 3 * span_loss
+            mlm_loss, mam_loss, rs_loss, span_loss = model(a_input, t_input, a_mask, t_mask, t_label, token_type, s_valid, e_valid, starts, ends)
+            loss = mlm_loss + mam_loss + rs_loss + span_loss
+            if args.num_ends == 1:
+                loss += 2 * span_loss
             if not args.dont_show and get_rank() == 0:
                 inner_it.set_postfix_str(f"MLM: {mlm_loss:.4f} MAM: {mam_loss:.4f} R-S: {rs_loss:.4f} SPAN: {span_loss:.4f}")
             loss = loss / args.grad_acc
