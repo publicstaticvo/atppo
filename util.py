@@ -1,5 +1,7 @@
 import os
 import copy
+import random
+
 import torch
 import pickle
 import torch.distributed as dist
@@ -33,6 +35,34 @@ def pad_cut(sequence, length, pad_token=0):
     return sequence, att
 
 
+def scale_audio_length(start, end, config):
+    for kernel, stride in zip(config.conv_kernel, config.conv_stride):
+        start = (start - kernel) // stride + 1
+        end = (end - kernel) // stride + 1
+    return [start, end]
+
+
+def group_scale_audio_length(arr, config):
+    for kernel, stride in zip(config.conv_kernel, config.conv_stride):
+        arr = torch.div(arr - kernel, stride, rounding_mode="floor") + 1
+    return torch.clamp_min(arr, 0)
+
+
+def compute_valid(sequences, length, pooling_mode):
+    if pooling_mode == "first":
+        valid = [0 for _ in range(length)]
+    else:
+        valid = [[0 for _ in range(length)] for _ in sequences]
+    for i, item in enumerate(sequences):
+        start, end = item
+        if pooling_mode == "first":
+            valid[start] = 1
+        else:
+            for j in range(start, end):
+                valid[i][j] = 1
+    return torch.BoolTensor(valid), len(sequences)
+
+
 def get_rank():
     if not dist.is_available():
         return 0
@@ -41,21 +71,15 @@ def get_rank():
     return dist.get_rank()
 
 
-def read_processed_pretrain(combined_path):
-    if os.path.isdir(combined_path):
-        datas = None
-        for r, d, fs in os.walk(combined_path):
-            if not d:
-                for f in fs:
-                    with open(os.path.join(r, f), "rb") as fp:
-                        if datas is None:
-                            datas = pickle.load(fp)
-                        else:
-                            datas += pickle.load(fp)
-    else:
-        with open(combined_path, "rb") as f:
-            datas = pickle.load(f)
-    return datas
+def negative_sampling(words, num_negative):
+    words = [x[0][:-1] if x[0][-1] in [',', '.', '?', '!'] and len(x[0]) > 1 else x[0] for x in words]
+    negative_samples = torch.zeros([len(words), len(words)], dtype=torch.bool)
+    for i, x in enumerate(words):
+        idx = [j for j, y in enumerate(words) if y != x]
+        if 0 < num_negative < len(idx):
+            idx = random.sample(idx, num_negative)
+        negative_samples[i, torch.LongTensor(idx)] = True
+    return negative_samples
 
 
 class ATConfig(PretrainedConfig):

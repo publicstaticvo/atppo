@@ -28,7 +28,6 @@ if __name__ == "__main__":
     parser.add_argument("--audio_length", default=10, type=float)
     parser.add_argument("--audio_path", default=None, type=str)
     parser.add_argument("--batch_size", default=256, type=int)
-    parser.add_argument("--current_epochs", default=0, type=int)
     parser.add_argument("--dont_show", action='store_true')
     parser.add_argument("--ds_config", default=None, type=str)
     parser.add_argument("--ds_stage", default=2, type=int)
@@ -60,7 +59,6 @@ if __name__ == "__main__":
     if args.num_ends != 1:
         assert args.num_ends == args.audio_length * 10
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    num_epochs = args.train_epochs - args.current_epochs
     if not torch.cuda.is_available():
         args.apex_level = 0
     if args.local_rank >= 0:
@@ -89,7 +87,7 @@ if __name__ == "__main__":
     config.audio.train_mode = 3
     tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
     # 4。读输入数据
-    train_data = TPPDataset(read_processed_pretrain(args.transcripts), args.num_turns, args.file_prefix)
+    train_data = TPPDataset(args.transcripts, args.num_turns, args.file_prefix)
     # 5。整理config并建立模型
     if args.no_pretrain:
         model = ATForTPP(config)
@@ -102,7 +100,7 @@ if __name__ == "__main__":
     decay = [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)]
     no_decay = [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)]
     ogp = [{"params": decay, "weight_decay": args.weight_decay}, {"params": no_decay, "weight_decay": 0.0}]
-    num_train_steps = num_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
+    num_train_steps = args.train_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
     if args.apex_level > 0:
         from apex import amp
         from apex.optimizers import FusedAdam
@@ -125,9 +123,9 @@ if __name__ == "__main__":
             model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
     if args.local_rank >= 0:
         num_train_steps = math.ceil(num_train_steps / n_gpu)
-        train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=10)
+        train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=20)
     else:
-        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data))
+        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data), num_workers=20)
     if args.grad_ckpt:
         if isinstance(model, DDP):
             model.module.gradient_checkpointing_enable()
@@ -135,7 +133,7 @@ if __name__ == "__main__":
             model.gradient_checkpointing_enable()
     model.train()
     losses = []
-    outer_it = tqdm.trange(args.current_epochs, args.train_epochs)
+    outer_it = tqdm.trange(args.train_epochs)
     for i in outer_it:
         inner_it = train_loader if args.dont_show or get_rank() else tqdm.tqdm(train_loader, desc="Inner")
         le = len(inner_it)

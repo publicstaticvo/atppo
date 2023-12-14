@@ -1,5 +1,6 @@
 import torch
 import random
+import pickle
 import numpy as np
 from torch.utils.data import Dataset
 from util import pad_cut
@@ -25,7 +26,11 @@ def compute_valid(transcript, offset, length, mode, audio_length):
 
 class TPPDataset(Dataset):
     def __init__(self, datas, num_turns, file_prefix=None):
-        self.datas = datas
+        if isinstance(datas, str):
+            with open(datas, "rb") as f:
+                self.datas = pickle.load(f)
+        else:
+            self.datas = datas
         self.n = len(datas)
         self.prefix = file_prefix
         self.num_turns = num_turns
@@ -35,17 +40,17 @@ class TPPDataset(Dataset):
         return len(self.has_positive)
 
     def __getitem__(self, idx):
-        anchor_idx = self.has_positive[idx]  # 0轮
+        positive_idx = self.has_positive[idx]  # 0轮
         # print(f"turns: {self.indexs} device: {torch.distributed.get_rank()} idx: {idx} anchor: {anchor_idx}")
-        prev_idx = self.datas[anchor_idx][-1]  # -1轮
+        anchor_idx = self.datas[positive_idx][-1]  # -1轮
         negative_idx_audio = random.randint(0, self.n - 3)
-        if negative_idx_audio >= anchor_idx:
+        if negative_idx_audio >= positive_idx:
             negative_idx_audio += 2
         negative_idx_text = random.randint(0, self.n - 3)
-        if negative_idx_text >= anchor_idx:
+        if negative_idx_text >= positive_idx:
             negative_idx_text += 2
         history = []  # <-2轮
-        curr_idx = prev_idx
+        curr_idx = anchor_idx
         for i in range(2, self.num_turns):
             if self.datas[curr_idx][-1] == -1:
                 break
@@ -53,13 +58,13 @@ class TPPDataset(Dataset):
             history = self.datas[curr_idx][1][1:] + history
         af, aw = self.datas[anchor_idx][:2]
         at = self.datas[anchor_idx][2:-1]
-        pf, pw = self.datas[prev_idx][:2]
-        pt = self.datas[prev_idx][2:-1]
+        pf, pw = self.datas[positive_idx][:2]
+        pt = self.datas[positive_idx][2:-1]
         nf = self.datas[negative_idx_audio][0]
         nw = self.datas[negative_idx_text][1]
         if self.prefix is not None:
-            af, pf, nf = map(lambda x: x.replace("/root/data/yts", self.prefix), [af, pf, nf])
-        return np.load(pf), pw, pt, np.load(af), aw, at, np.load(nf), nw, [0] + history
+            af, pf, nf = map(lambda x: x.replace("/mnt/ewwe/yts/at", self.prefix), [af, pf, nf])
+        return np.load(af), aw, at, np.load(pf), pw, pt, np.load(nf), nw, [0] + history
 
 
 class DataCollatorForTPP:
@@ -136,7 +141,7 @@ class DataCollatorForTPP:
             text_labels.append(mlm_label)
             token_type.extend([p_token_type, n_token_type])
             # 音频有三个
-            aa, pa, na = map(lambda x: (torch.HalfTensor(x) if self.fp16 else torch.FloatTensor(x)), [aa, pa, na])
+            aa, pa, na = map(torch.HalfTensor if self.fp16 else torch.FloatTensor, [aa, pa, na])
             aa, a_aam = pad_cut(aa, self.config.audio.max_length)
             pa, p_aam = pad_cut(pa, self.config.audio.max_length)
             na, n_aam = pad_cut(na, self.config.audio.max_length)
