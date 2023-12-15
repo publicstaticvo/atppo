@@ -1,4 +1,4 @@
-python -m torch.distributed.launch --nproc_per_node=4 /mnt/ewwe/yts/at/atppo/tpp/main.py \
+python -m torch.distributed.launch --nproc_per_node=4 /mnt/ewwe/yts/at/atppo/rm/main.py \
     --apex_level=2 \
     --audio_length=10 \
     --batch_size=12 \

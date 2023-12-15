@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import math
 import tqdm
@@ -34,6 +33,7 @@ if __name__ == '__main__':
     # 默认参数为：iemocap使用multi audio和audio的token type id，数据集使用V2数据集，没有CL、情绪盘等复杂内容。
     parser = argparse.ArgumentParser()
     parser.add_argument('--accumulate_num', type=int, default=1)
+    parser.add_argument('--apex_level', type=int, default=2)
     parser.add_argument("--audio_length", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument('--dont_show', action="store_true")
@@ -75,10 +75,7 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     # 3. load model
-    if int(re.findall(r"v([1-9])", args.model)[0]) >= 5:
-        model = ATForSequenceClassification.from_pretrained(args.model, config=config, num_class=label_num).to(args.device)
-    else:
-        model = ATForSequenceClassification(ckpt_path=args.model, config=config, num_class=label_num).to(args.device)
+    model = ATForSequenceClassification.from_pretrained(args.model, config=config, num_class=label_num).to(args.device)
     # print(next(model.named_parameters()))
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
@@ -87,7 +84,7 @@ if __name__ == '__main__':
         {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
     optimizer = FusedAdam(optimizer_grouped_parameters, lr=args.lr, bias_correction=False)
-    model, optimizer = amp.initialize(model, optimizer, opt_level=f"O2", loss_scale="dynamic")
+    model, optimizer = amp.initialize(model, optimizer, opt_level=f"O{args.apex_level}", keep_batchnorm_fp32=False if args.apex_level >= 2 else None, loss_scale="dynamic")
     # 4. dataset
     c = DataCollatorForDownstream(audio_length, args.task in ["mosi", "mosei"], args.min_text_length)
     train_data = DownstreamDataset(DATA_PATH, args.task, "train")

@@ -24,14 +24,14 @@ def pad_cut(sequence, length, pad_token=0):
     seq_len = sequence.shape[0]
     if length > seq_len:
         padding = torch.ones(length - seq_len, dtype=sequence.dtype) * pad_token
-        att = torch.cat([torch.ones_like(sequence), padding])
         sequence = torch.cat([sequence, padding])
+        att = torch.cat([torch.ones(seq_len, dtype=torch.long), padding.long()])
     else:
         if sequence.dtype == torch.long:
             sequence = torch.cat([sequence[:1], sequence[1 - length:]])
         else:
             sequence = sequence[:length]
-        att = torch.ones_like(sequence)
+        att = torch.ones(length, dtype=torch.long)
     return sequence, att
 
 
@@ -45,7 +45,7 @@ def scale_audio_length(start, end, config):
 def group_scale_audio_length(arr, config):
     for kernel, stride in zip(config.conv_kernel, config.conv_stride):
         arr = torch.div(arr - kernel, stride, rounding_mode="floor") + 1
-    return torch.clamp_min(arr, 0)
+    return arr
 
 
 def compute_valid(sequences, length, pooling_mode):

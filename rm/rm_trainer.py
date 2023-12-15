@@ -30,7 +30,7 @@ class ATRewardModel(PreTrainedModel):
     def __init__(self, config: ATConfig, audio=None, text=None):
         super(ATRewardModel, self).__init__(config)
         self.hidden_size = config.text.hidden_size
-        self.model = ATModel(config, audio, text)
+        self.model = ATModel(config, audio, text, tpp=False)
         self.mlm_head = RobertaLMHead(config.text)
         self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
         self.selection_head = nn.Linear(self.hidden_size, 4)
@@ -62,8 +62,8 @@ class ATRewardModel(PreTrainedModel):
             t_valid = self.valid_filter(text[i], text_valid[i], self.config.text.pooling_mode)
             sim = torch.exp(similar(t_valid, a_valid, self.temperature))  # N*N
             positive = torch.diag(sim)
-            negative = torch.sum(sim * negative_indices[i].unsqueeze(-1), dim=-1)
-            losses += -torch.log(positive / (positive + negative))
+            negative = torch.sum(sim * negative_indices[i], dim=-1)
+            losses += torch.mean(-torch.log(positive / (positive + negative)))
         return losses / bs
 
     def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id=None, audio_valid=None, text_valid=None, neg=None):

@@ -111,8 +111,7 @@ if __name__ == "__main__":
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_train_steps)
     c = DataCollatorForRM(tokenizer, config, args.apex_level > 0)
     if args.ds_config:
-        model, optimizer, _, scheduler = deepspeed.initialize(model=model, optimizer=optimizer, config=args.ds_config,
-                                                              lr_scheduler=scheduler, dist_init_required=True)
+        model, optimizer, _, scheduler = deepspeed.initialize(model=model, optimizer=optimizer, config=args.ds_config, lr_scheduler=scheduler, dist_init_required=True)
     else:
         model.to(args.device)
         if args.apex_level > 0:
@@ -125,7 +124,7 @@ if __name__ == "__main__":
         num_train_steps = math.ceil(num_train_steps / n_gpu)
         train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=20)
     else:
-        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data), num_workers=20)
+        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data))
     if args.grad_ckpt:
         if isinstance(model, DDP):
             model.module.gradient_checkpointing_enable()

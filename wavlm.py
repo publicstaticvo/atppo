@@ -654,8 +654,7 @@ class WavLMPreTrainedModel(PreTrainedModel):
         output_lengths = self._get_feat_extract_output_lengths(non_padded_lengths, add_adapter=add_adapter)
         output_lengths = torch.clamp_max(output_lengths + 1, feature_vector_length).long()
         batch_size = attention_mask.shape[0]
-        attention_mask = torch.zeros((batch_size, feature_vector_length)).to(attention_mask.device,
-                                                                             dtype=attention_mask.dtype)
+        attention_mask = torch.zeros((batch_size, feature_vector_length)).to(attention_mask.device, dtype=attention_mask.dtype)
         attention_mask[(torch.arange(attention_mask.shape[0], device=attention_mask.device), output_lengths - 1)] = 1
         attention_mask = attention_mask.flip([-1]).cumsum(-1).flip([-1]).bool()
         return output_lengths.tolist(), attention_mask
@@ -736,7 +735,6 @@ class WavLMForMultiTurn(WavLMPreTrainedModel):
         extract_features = self.feature_extractor(input_values)
         extract_features = extract_features.transpose(1, 2)
         out_len, attention_mask = self._get_feature_vector_attention_mask(extract_features.shape[1], attention_mask, add_adapter=False)
-        print("out_len", out_len, input_values.shape)
         mam_labels, masked_indices, masked_indices_for_concat = None, None, None
         if perform_mam:
             extract_features, masked_indices, mam_labels = create_mam_samples(extract_features, out_len)
