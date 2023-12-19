@@ -46,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('--patience', type=int, default=10)
     parser.add_argument("--save_epoch", type=int, default=-1)
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument("--task", type=str, choices=['iemocap', 'mosi', 'meld', 'mintrec', 'mosei'])
+    parser.add_argument("--task", type=str, choices=['ic10', 'ic11', 'ic12', 'meld', 'mosi', 'mintrec', 'mosei'])
     parser.add_argument('--tokenizer', type=str, default="/mnt/ewwe/yts/at/models/robertaForV3")
     parser.add_argument('--warmup', type=float, default=0.)
     parser.add_argument('--weight_decay', type=float, default=0.01)
@@ -62,9 +62,11 @@ if __name__ == '__main__':
         print(f"Model {args.model} batchsize {args.batch_size} epochs {args.epochs} lr {args.lr:.1e} gradacc {args.accumulate_num} task {args.task} scheduler_type {args.warmup}")
     args.output_file = os.path.join(RESULT_PATH, args.output_file)
     args.model = os.path.join(MODEL_PATH, args.model)
-    label_num = LABEL_NUM[args.task]
+    task_type = 'iemocap' if 'ic' in args.task else args.task
+    label_num = LABEL_NUM[task_type]
     config = ATConfig.from_pretrained(args.model, return_unused_kwargs=False)
-    config.audio.train_mode = 2 if args.task in ["meld", "iemocap"] else 1
+    config.audio.train_mode = 2 if task_type in ['meld', 'iemocap'] else 1
+    audio_multi_turn = (config.audio.train_mode == 2)
     config.fused.num_hidden_layers = 1
     config.set_length(audio_length, 512)
     tokenizer = RobertaTokenizerFast.from_pretrained(args.tokenizer)
@@ -86,15 +88,15 @@ if __name__ == '__main__':
     optimizer = FusedAdam(optimizer_grouped_parameters, lr=args.lr, bias_correction=False)
     model, optimizer = amp.initialize(model, optimizer, opt_level=f"O{args.apex_level}", keep_batchnorm_fp32=False if args.apex_level >= 2 else None, loss_scale="dynamic")
     # 4. dataset
-    c = DataCollatorForDownstream(audio_length, args.task in ["mosi", "mosei"], args.min_text_length)
-    train_data = DownstreamDataset(DATA_PATH, args.task, "train")
+    c = DataCollatorForDownstream(audio_length, task_type in ["mosi", "mosei"], args.min_text_length)
+    train_data = DownstreamDataset(DATA_PATH, args.task, "train", audio_multi_turn)
     if n_gpu > 1:
         model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
         train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c, sampler=DistributedSampler(train_data), pin_memory=True)
     else:
         train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data))
-    valid_loader = DataLoader(dataset=DownstreamDataset(DATA_PATH, args.task, "valid"), batch_size=args.batch_size, collate_fn=c)
-    test_loader = DataLoader(dataset=DownstreamDataset(DATA_PATH, args.task, "test"), batch_size=args.batch_size, collate_fn=c)
+    valid_loader = DataLoader(dataset=DownstreamDataset(DATA_PATH, args.task, "valid", audio_multi_turn), batch_size=args.batch_size, collate_fn=c)
+    test_loader = DataLoader(dataset=DownstreamDataset(DATA_PATH, args.task, "test", audio_multi_turn), batch_size=args.batch_size, collate_fn=c)
     # 5. scheduler
     if args.warmup > 0:
         steps = args.epochs * math.ceil(len(train_data) / args.batch_size / args.accumulate_num / max(1, n_gpu))
@@ -103,8 +105,8 @@ if __name__ == '__main__':
     else:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     # 6.preparation
-    experiment_data = [[], [], [], []] if args.task in ["mosi", "mosei"] else [[], [], []]
-    early_stop_metric = [-10.0, 0.0, 0.0, 0.0] if args.task in ["mosi", "mosei"] else [-10.0, 0.0, 0.0]
+    experiment_data = [[], [], [], []] if task_type in ["mosi", "mosei"] else [[], [], []]
+    early_stop_metric = [-10.0, 0.0, 0.0, 0.0] if task_type in ["mosi", "mosei"] else [-10.0, 0.0, 0.0]
     equal = [False for _ in early_stop_metric]
     best_epoch = 0
     best_metrics = []
@@ -151,8 +153,8 @@ if __name__ == '__main__':
                 true_y.extend(batch["label"].detach().cpu().numpy().tolist())
                 epoch_val_loss.append(float(loss.detach().cpu()))
         average_valid_loss = torch.mean(torch.tensor(epoch_val_loss))
-        if args.task in ["mosi", "mosei"]:
-            m = downstream_metrics(pred_y, true_y, args.task)
+        if task_type in ["mosi", "mosei"]:
+            m = downstream_metrics(pred_y, true_y, task_type)
             val_acc, val_acc_2 = m["acc_a7"], m["acc_a2_non0"]
             metrics = [-average_valid_loss, val_acc, val_acc_2, val_acc * 5 - average_valid_loss]
         else:
@@ -183,16 +185,15 @@ if __name__ == '__main__':
                     label_outputs = prediction.cpu().detach().numpy().astype(int)
                 pred_y.extend(label_outputs.tolist())
                 true_y.extend(batch['label'].detach().cpu().numpy().tolist())
-        metric = downstream_metrics(pred_y, true_y, args.task)
+        metric = downstream_metrics(pred_y, true_y, task_type)
         if not args.dont_show and get_rank() == 0:
             print("Test Metric: {}".format(' - '.join(['{}: {:.4f}'.format(k, v) for k, v in metric.items()])))
         for i in range(len(metrics)):
             if early_stop_metric[i] == metrics[i]:
                 result = [float(f"{v * 100:.2f}") if "f1" in k or "acc" in k else v for k, v in metric.items()]
-                if not experiment_data[i] or not equal[i] or experiment_data[i][KEY_METRIC_INDEX[args.task]] <=\
-                        result[KEY_METRIC_INDEX[args.task] - 1]:
+                if not experiment_data[i] or not equal[i] or experiment_data[i][KEY_METRIC_INDEX[task_type]] <= result[KEY_METRIC_INDEX[task_type] - 1]:
                     experiment_data[i] = [epoch + 1] + result
-                if not best_metrics or best_metrics[KEY_METRIC_INDEX[args.task]] <= result[KEY_METRIC_INDEX[args.task] - 1]:
+                if not best_metrics or best_metrics[KEY_METRIC_INDEX[task_type]] <= result[KEY_METRIC_INDEX[task_type] - 1]:
                     best_metrics = [epoch + 1] + result
         if epoch - best_epoch == args.patience or (early_stop_metric[-1] == 0.0 and epoch == 2):
             if get_rank() == 0:

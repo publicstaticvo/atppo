@@ -20,28 +20,15 @@ def pad_cut(sequence, length):
 
 
 class DownstreamDataset(Dataset):
-    def __init__(self, root, task, op):
+    def __init__(self, root, task, op, audio_multi_turn):
         sub_root = "downstreamv2"
-        if task in ["meld", "iemocap"]:
-            audio_multi_turn = True
-            task += "2"
-        else:
-            audio_multi_turn = False
-        if op == "train":
-            print(sub_root, task)
         with open(f"{root}/{sub_root}/{task}/{op}.pkl", "rb") as f:
             self.data_list = pickle.load(f)
         if audio_multi_turn:
-            for i, item in enumerate(self.data_list[1]):
-                if item[3] >= 0:
-                    word = item[4] + item[1][1:]
-                    turn_id = [0 for _ in item[4]] + [1 for _ in range(len(word) - len(item[4]))]
-                    audio = self.data_list[0][item[3]]
-                else:
-                    word = item[1]
-                    turn_id = [1 for _ in item[1]]
-                    audio = []
-                self.data_list[1][i] = [self.data_list[0][item[0]], word, item[2], turn_id, audio]
+            for d in self.data_list[1]:
+                d[0] = self.data_list[0][d[0]]
+                if d[4] >= 0: d[4] = self.data_list[0][d[4]]
+                else: d[4] = [0.0]
             self.data_list = self.data_list[1]
 
     def __len__(self):

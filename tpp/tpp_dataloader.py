@@ -34,7 +34,7 @@ class TPPDataset(Dataset):
         self.n = len(datas)
         self.prefix = file_prefix
         self.num_turns = num_turns
-        self.has_positive = [i for i, d in enumerate(datas) if d[-1] >= 0]
+        self.has_positive = [i for i, d in enumerate(self.datas) if d[-1] >= 0]
 
     def __len__(self):
         return len(self.has_positive)

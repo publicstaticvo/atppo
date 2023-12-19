@@ -7,7 +7,9 @@ import random
 import argparse
 import deepspeed
 import numpy as np
+import datetime
 
+print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
 from rm_trainer import ATRewardModel
@@ -171,4 +173,4 @@ if __name__ == "__main__":
                 temp = temp.module
             temp.save_pretrained(save_path)
         if get_rank() == 0:
-            outer_it.set_postfix_str(f"MLM: {mlm_loss:.4f} MAM: {mam_loss:.4f} R-S: {rs_loss:.4f} SPAN: {span_loss:.4f}")
+            outer_it.set_postfix_str(f"loss: {loss:.4f}")

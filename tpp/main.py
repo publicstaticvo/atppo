@@ -7,7 +7,9 @@ import random
 import argparse
 import deepspeed
 import numpy as np
+import datetime
 
+print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
 from tpp_trainer import ATForTPP
