@@ -3,7 +3,6 @@ import sys
 import tqdm
 import json
 import math
-import random
 import argparse
 import deepspeed
 import numpy as np
@@ -48,6 +47,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_negative", default=0, type=int)
     parser.add_argument("--num_turns", default=8, type=int)
     parser.add_argument("--num_fused_layers", default=1, type=int)
+    parser.add_argument("--perform_mlm", action='store_true')
     parser.add_argument("--save_interval", default=100, type=int)
     parser.add_argument("--save_tmp", default=None, type=str)
     parser.add_argument('--seed', type=int, default=42)
@@ -87,6 +87,7 @@ if __name__ == "__main__":
         config.set_length(int(args.audio_length * SAMPLE_RATE), args.text_length)
         config.fused.num_hidden_layers = args.num_fused_layers
     config.audio.train_mode = 2
+    config.perform_mlm = args.perform_mlm
     config.num_negative = args.num_negative
     config.set_pooling_mode(args.audio_pooling_mode, args.text_pooling_mode)
     tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
@@ -140,14 +141,18 @@ if __name__ == "__main__":
         le = len(inner_it)
         if isinstance(train_loader.sampler, DistributedSampler):
             train_loader.sampler.set_epoch(i)
-        losses = []
+        losses = [0, 0]
         for j, batch in enumerate(inner_it):
-            a_input, a_mask, a_valid, t_input, t_mask, t_valid, turn_id, neg = batch
+            a_input, a_mask, a_valid, t_input, t_mask, t_valid, turn_id, neg, mlm_labels = batch
             a_input, a_mask, t_input, t_mask, turn_id = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_mask, turn_id])
             a_valid, t_valid, neg = map(lambda x: [t.to(args.device) for t in x], [a_valid, t_valid, neg])
-            loss = model(a_input, t_input, a_mask, t_mask, turn_id, a_valid, t_valid, neg)
+            if mlm_labels: mlm_labels.to(args.device)
+            mlm, mam, rm = model(a_input, t_input, a_mask, t_mask, turn_id, a_valid, t_valid, neg, mlm_labels)
+            loss = mlm + mam + rm
+            losses[0] += float(loss)
+            losses[1] += float(rm)
             if not args.dont_show and get_rank() == 0:
-                inner_it.set_postfix_str(f"loss: {loss:.4f}")
+                inner_it.set_postfix_str(f"loss: {loss:.4f}|rm: {rm:.4f}")
             loss = loss / args.grad_acc
             if args.ds_config:
                 model.backward(loss)
@@ -173,4 +178,4 @@ if __name__ == "__main__":
                 temp = temp.module
             temp.save_pretrained(save_path)
         if get_rank() == 0:
-            outer_it.set_postfix_str(f"loss: {loss:.4f}")
+            outer_it.set_postfix_str(f"loss: {losses[0] / le:.4f}|rm:{losses[1] / le:.4f}")

@@ -20,7 +20,6 @@ class RMDataset(Dataset):
 
     def __getitem__(self, idx):
         positive_idx = self.has_positive[idx]  # 0轮
-        # print(f"turns: {self.indexs} device: {torch.distributed.get_rank()} idx: {idx} anchor: {anchor_idx}")
         anchor_idx = self.datas[positive_idx][-1]  # -1轮
         history = []  # <-2轮
         curr_idx = anchor_idx
@@ -46,8 +45,28 @@ class DataCollatorForRM:
         self.config = config
         self.fp16 = fp16
 
+    def get_mlm_instance(self, text_input):
+        # text_input: tokenizer.encode之后的word indices列表。
+        labels = text_input.clone()
+        probability_matrix = torch.full(labels.shape, self.mlm_prob)
+        # special_tokens_mask：指定序列中哪些位置是special tokens，这些部分不能被mask。主要是[PAD][CLS][SEP]
+        special_tokens_mask = self.tokenizer.get_special_tokens_mask(labels, already_has_special_tokens=True)
+        special_tokens_mask = torch.tensor(special_tokens_mask, dtype=torch.bool)
+        probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+        labels[~masked_indices] = -100  # 使用labels[masked_indices]作为目标，或直接丢给RobertaForMaskedLM
+        # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+        text_input[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
+        # 10% of the time, we replace masked input tokens with random word
+        indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
+        random_words = torch.randint(len(self.tokenizer), labels.shape, dtype=torch.long)
+        text_input[indices_random] = random_words[indices_random]
+        # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+        return text_input, labels
+
     def __call__(self, batch):
-        audios, a_mask, texts, t_mask, a_valid, t_valid, turn_id, negative_indices = [], [], [], [], [], [], [], []
+        audios, a_mask, texts, t_mask, a_valid, t_valid, turn_id, labels, negative_indices = [], [], [], [], [], [], [], [], []
         ml = 0
         for item in batch:
             ml = max([ml, len(item[1]) + len(item[4]) + len(item[6]) - 2])
@@ -66,7 +85,10 @@ class DataCollatorForRM:
                 offset_a = len(history) - 1
                 offset_p = offset_a + len(at) - 1
             text, tam = pad_cut(text, ml)
-            
+            if self.config.perform_mlm:
+                text, mlm_label = self.get_mlm_instance(text)
+                labels.append(mlm_label)
+
             text_marks = []
             anchor_audio_marks = []
             positive_audio_marks = []
@@ -109,4 +131,6 @@ class DataCollatorForRM:
             t_valid.append(text_valid)
             turn_id.append(torch.cat([torch.zeros(offset_p + 1), torch.ones(ml - offset_p - 1)]).long())
         audios, a_mask, texts, t_mask, turn_id = map(lambda t: torch.stack(t, dim=0), [audios, a_mask, texts, t_mask, turn_id])
-        return audios, a_mask, a_valid, texts, t_mask, t_valid, turn_id, negative_indices
+        if labels: labels = torch.stack(labels, dim=0)
+        else: labels = None
+        return audios, a_mask, a_valid, texts, t_mask, t_valid, turn_id, negative_indices, labels

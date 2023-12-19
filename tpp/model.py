@@ -39,7 +39,7 @@ class ATModel(PreTrainedModel):
             fused_input = fused_input.squeeze(-1)
         return fused_input
 
-    def get_fused_input_for_tpp(self, audio_features, audio_mask, text_features, text_mask):
+    def get_fused_input_for_conversation(self, audio_features, audio_mask, text_features, text_mask):
         bs = text_features.shape[0] // 2
         text_len = text_features.shape[1]
         audio_features = audio_features.view(bs, 2, -1, self.hidden_size)
@@ -69,7 +69,7 @@ class ATModel(PreTrainedModel):
         text_features = self.text_encoder(text_input, text_attention_mask, token_type_ids=turn_id)[0]
         # text_features: 2B * 514 * 768
         if self.tpp:
-            fused_input, fused_attention_mask = self.get_fused_input_for_tpp(audio_features, audio_mask, text_features, text_attention_mask)
+            fused_input, fused_attention_mask = self.get_fused_input_for_conversation(audio_features, audio_mask, text_features, text_attention_mask)
         else:
             fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_attention_mask)
         fused_input = self.fused_encoder(fused_input, fused_attention_mask).last_hidden_state
