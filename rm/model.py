@@ -25,7 +25,7 @@ class ATModel(PreTrainedModel):
             self.text_encoder = RobertaModel.from_pretrained(text, config=config.text)
         self.token_type_embeddings = nn.Embedding(2, config.text.hidden_size)
 
-    def forward(self, audio_input, text_input, audio_attention_mask=None, text_attention_mask=None, turn_id=None, mask_modeling=False):
-        audio_features, audio_mask, mam_label, a_masked = self.audio_encoder(audio_input, audio_attention_mask, perform_mam=mask_modeling, token_embedding=self.text_encoder.embeddings.token_type_embeddings)
+    def forward(self, audio_input, text_input, audio_attention_mask=None, text_attention_mask=None, turn_id=None, perform_mam=False):
+        audio_features, audio_mask, mam_label, a_masked = self.audio_encoder(audio_input, audio_attention_mask, perform_mam=perform_mam, token_embedding=self.text_encoder.embeddings.token_type_embeddings)
         text_features = self.text_encoder(text_input, text_attention_mask, token_type_ids=turn_id)[0]
         return audio_features, text_features, mam_label, a_masked

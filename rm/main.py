@@ -146,7 +146,7 @@ if __name__ == "__main__":
             a_input, a_mask, a_valid, t_input, t_mask, t_valid, turn_id, neg, mlm_labels = batch
             a_input, a_mask, t_input, t_mask, turn_id = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_mask, turn_id])
             a_valid, t_valid, neg = map(lambda x: [t.to(args.device) for t in x], [a_valid, t_valid, neg])
-            if mlm_labels: mlm_labels.to(args.device)
+            if mlm_labels is not None: mlm_labels.to(args.device)
             mlm, mam, rm = model(a_input, t_input, a_mask, t_mask, turn_id, a_valid, t_valid, neg, mlm_labels)
             loss = mlm + mam + rm
             losses[0] += float(loss)

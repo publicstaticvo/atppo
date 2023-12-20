@@ -35,6 +35,9 @@ class ATRewardModel(PreTrainedModel):
         if self.perform_mlm:
             self.mlm_head = RobertaLMHead(config.text)
             self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
+            self.vocab_size = config.text.vocab_size
+            self.ce = torch.nn.CrossEntropyLoss()
+            self.l1 = torch.nn.L1Loss()
         # self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
         # self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
         self.temperature = 1

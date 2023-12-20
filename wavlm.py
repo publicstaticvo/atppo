@@ -770,6 +770,7 @@ class WavLMForMultiTurn(WavLMPreTrainedModel):
             hidden_states = torch.zeros([bs, new_len, self.config.hidden_size], device=a1.device, dtype=a1.dtype)
             attention_mask = torch.zeros([bs, new_len], device=a1.device, dtype=torch.bool)
             token_type_id = torch.ones([bs, new_len], device=a1.device, dtype=torch.long)
+            masked_indices_for_concat = torch.zeros([bs, new_len], device=a1.device, dtype=masked_indices.dtype) if perform_mam else None
             for i in range(bs):
                 la1, la2 = out_len[2 * i: 2 * i + 2]
                 pl = la1 + la2 + 2
