@@ -3,7 +3,6 @@ import sys
 import tqdm
 import json
 import math
-import random
 import argparse
 import deepspeed
 import numpy as np
@@ -12,9 +11,8 @@ import datetime
 print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
-from tpp_trainer import ATForTPP
-from configuration_at import ATConfig
-from tpp_dataloader import TPPDataset, DataCollatorForTPP
+from rm_trainer import ATRewardModel
+from rm_dataloader import RMDataset, DataCollatorForRM
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 from transformers import RobertaTokenizerFast, AdamW, get_linear_schedule_with_warmup
@@ -28,51 +26,42 @@ if __name__ == "__main__":
     # 1.输入参数
     parser = argparse.ArgumentParser()
     parser.add_argument("--apex_level", default=0, type=int)
+    parser.add_argument("--actor_lr", default=1e-5, type=float)
+    parser.add_argument("--actor_path", default=None, type=str, required=True)
     parser.add_argument("--audio_length", default=10, type=float)
-    parser.add_argument("--audio_path", default=None, type=str)
     parser.add_argument("--batch_size", default=256, type=int)
+    parser.add_argument("--critic_lr", default=1e-5, type=float)
+    parser.add_argument("--critic_path", default=None, type=str, required=True)
     parser.add_argument("--dont_show", action='store_true')
     parser.add_argument("--ds_config", default=None, type=str)
-    parser.add_argument("--ds_stage", default=2, type=int)
+    parser.add_argument("--ds_stage", default=3, type=int)
     parser.add_argument("--file_prefix", default=None, type=str)
     parser.add_argument("--grad_acc", default=16, type=int)
-    parser.add_argument("--grad_ckpt", action='store_true')
     parser.add_argument("--grad_norm", default=0., type=float)
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument("--loss_scale", default=0., type=float)
-    parser.add_argument("--lr", default=1e-4, type=float)
     parser.add_argument("--model_name", default="v1.1", type=str)
-    parser.add_argument("--model_path", default=None, type=str)
     parser.add_argument("--model_save_path", default=None, type=str)
-    parser.add_argument("--no_pretrain", action='store_true')
-    parser.add_argument("--num_ends", default=1, type=int)
     parser.add_argument("--num_turns", default=8, type=int)
     parser.add_argument("--num_fused_layers", default=1, type=int)
     parser.add_argument("--save_interval", default=100, type=int)
     parser.add_argument("--save_tmp", default=None, type=str)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument("--text_length", default=512, type=int)
-    parser.add_argument("--text_path", default=None, type=str)
+    parser.add_argument("--tokenizer_path", default=None, type=str, required=True)
     parser.add_argument("--train_epochs", default=10, type=int)
     parser.add_argument("--transcripts", default=None, type=str, required=True)
     parser.add_argument("--warmup", default=0.01, type=float)
     parser.add_argument("--weight_decay", default=0.01, type=float)
     args = parser.parse_args()
-    n_gpu = torch.cuda.device_count()
-    if args.num_ends != 1:
-        assert args.num_ends == args.audio_length * 10
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    n_gpu = torch.cuda.device_count()
     if not torch.cuda.is_available():
         args.apex_level = 0
     if args.local_rank >= 0:
         torch.cuda.set_device(args.local_rank)
         args.device = torch.device("cuda", args.local_rank)
         dist.init_process_group(backend="nccl", init_method='env://')
-    if args.ds_config == "default":
-        args.ds_config = get_train_ds_config(args.batch_size, n_gpu, args.grad_acc, args.ds_stage, args.apex_level)
-    elif args.ds_config:
-        with open(args.ds_config, "w+") as f:
-            args.ds_config = json.load(f)
     # 2.设随机数
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -80,60 +69,17 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     # 3。使用tokenizer
-    if args.model_path:
-        config = ATConfig.from_pretrained(args.model_path)
-    else:
-        config = ATConfig.from_json_files(os.path.join(args.audio_path, CONFIG), os.path.join(args.text_path, CONFIG))
-        config.set_length(int(args.audio_length * SAMPLE_RATE), args.text_length)
-        config.fused.num_hidden_layers = args.num_fused_layers
-        config.fused.num_ends = args.num_ends
-    config.audio.train_mode = 3
     tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
     # 4。读输入数据
-    train_data = TPPDataset(args.transcripts, args.num_turns, args.file_prefix)
+    train_data = RMDataset(args.transcripts, args.num_turns, args.file_prefix)
     # 5。整理config并建立模型
-    if args.no_pretrain:
-        model = ATForTPP(config)
-    elif args.model_path:
-        model = ATForTPP.from_pretrained(args.model_path, config=config)
-    else:
-        model = ATForTPP(config, args.audio_path, args.text_path)
     # 6。数据并行
-    no_decay = ['bias', 'LayerNorm.weight', 'LayerNorm.bias']
-    decay = [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)]
-    no_decay = [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)]
-    ogp = [{"params": decay, "weight_decay": args.weight_decay}, {"params": no_decay, "weight_decay": 0.0}]
-    num_train_steps = args.train_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
-    if args.apex_level > 0:
-        from apex import amp
-        from apex.optimizers import FusedAdam
-        optimizer = FusedAdam(ogp, lr=args.lr, bias_correction=False)
-    else:
-        optimizer = AdamW(ogp, lr=args.lr, eps=1e-8)
-    warmup_steps = int(args.warmup * num_train_steps)
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_train_steps)
-    c = DataCollatorForTPP(tokenizer, config, args.apex_level > 0)
-    if args.ds_config:
-        model, optimizer, _, scheduler = deepspeed.initialize(model=model, optimizer=optimizer, config=args.ds_config,
-                                                              lr_scheduler=scheduler, dist_init_required=True)
-    else:
-        model.to(args.device)
-        if args.apex_level > 0:
-            model, optimizer = amp.initialize(model, optimizer, opt_level=f"O{args.apex_level}",
-                                              keep_batchnorm_fp32=False if args.apex_level >= 2 else None,
-                                              loss_scale="dynamic" if args.loss_scale == 0. else args.loss_scale)
-        if args.local_rank >= 0:
-            model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
+    c = DataCollatorForRM(tokenizer, config, args.apex_level > 0)
     if args.local_rank >= 0:
         num_train_steps = math.ceil(num_train_steps / n_gpu)
         train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=20)
     else:
-        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data), num_workers=20)
-    if args.grad_ckpt:
-        if isinstance(model, DDP):
-            model.module.gradient_checkpointing_enable()
-        else:
-            model.gradient_checkpointing_enable()
+        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data))
     model.train()
     losses = []
     outer_it = tqdm.trange(args.train_epochs)
@@ -142,16 +88,18 @@ if __name__ == "__main__":
         le = len(inner_it)
         if isinstance(train_loader.sampler, DistributedSampler):
             train_loader.sampler.set_epoch(i)
-        losses = []
+        losses = [0, 0]
         for j, batch in enumerate(inner_it):
-            batch = tuple(t.to(args.device) for t in batch)
-            a_input, a_mask, t_input, t_label, t_mask, s_valid, e_valid, token_type, starts, ends = batch
-            mlm_loss, mam_loss, rs_loss, span_loss = model(a_input, t_input, a_mask, t_mask, t_label, token_type, s_valid, e_valid, starts, ends)
-            loss = mlm_loss + mam_loss + rs_loss + span_loss
-            if args.num_ends == 1:
-                loss += 2 * span_loss
+            a_input, a_mask, a_valid, t_input, t_mask, t_valid, turn_id, neg, mlm_labels = batch
+            a_input, a_mask, t_input, t_mask, turn_id = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_mask, turn_id])
+            a_valid, t_valid, neg = map(lambda x: [t.to(args.device) for t in x], [a_valid, t_valid, neg])
+            if mlm_labels is not None: mlm_labels.to(args.device)
+            mlm, mam, rm = model(a_input, t_input, a_mask, t_mask, turn_id, a_valid, t_valid, neg, mlm_labels)
+            loss = mlm + mam + rm
+            losses[0] += float(loss)
+            losses[1] += float(rm)
             if not args.dont_show and get_rank() == 0:
-                inner_it.set_postfix_str(f"MLM: {mlm_loss:.4f} MAM: {mam_loss:.4f} R-S: {rs_loss:.4f} SPAN: {span_loss:.4f}")
+                inner_it.set_postfix_str(f"loss: {loss:.4f}|rm: {rm:.4f}")
             loss = loss / args.grad_acc
             if args.ds_config:
                 model.backward(loss)
@@ -177,4 +125,4 @@ if __name__ == "__main__":
                 temp = temp.module
             temp.save_pretrained(save_path)
         if get_rank() == 0:
-            outer_it.set_postfix_str(f"MLM: {mlm_loss:.4f} MAM: {mam_loss:.4f} R-S: {rs_loss:.4f} SPAN: {span_loss:.4f}")
+            outer_it.set_postfix_str(f"loss: {losses[0] / le:.4f}|rm:{losses[1] / le:.4f}")

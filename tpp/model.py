@@ -1,8 +1,8 @@
 import torch
 import torch.distributed
 from torch import nn
-from util import ATConfig
 from wavlm import WavLMForMultiTurn
+from configuration_at import ATConfig
 from transformers import PreTrainedModel
 from transformers.models.roberta.modeling_roberta import RobertaModel, RobertaLayer, RobertaEncoder
 

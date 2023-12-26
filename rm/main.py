@@ -12,6 +12,7 @@ print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
 from rm_trainer import ATRewardModel
+from configuration_at import ATConfig
 from rm_dataloader import RMDataset, DataCollatorForRM
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
