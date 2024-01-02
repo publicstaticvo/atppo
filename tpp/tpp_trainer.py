@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from model import ATModel
-from util import ATConfig
+from configuration_at import ATConfig
 from transformers import PreTrainedModel
 from wavlm import WavLMMAMHead, WavLMForMultiTurn, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder
 from transformers.models.roberta.modeling_roberta import RobertaLMHead, RobertaEncoder, RobertaModel, RobertaLayer
