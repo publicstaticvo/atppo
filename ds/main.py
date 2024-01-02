@@ -18,6 +18,7 @@ from sklearn.metrics import accuracy_score
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
+from configuration_at import ATConfig
 
 os.environ["NCCL_DEBUG"] = "WARN"
 LABEL_NUM = {'mosi': 1, 'meld': 7, 'snips': 7, 'mosei': 1, 'mintrec': 20, 'iemocap': 6}

@@ -5,7 +5,7 @@ from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from tpp.model import ATModel
-from util import ATConfig
+from configuration_at import ATConfig
 
 
 class ATForSequenceClassification(PreTrainedModel):
