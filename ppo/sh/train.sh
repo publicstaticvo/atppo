@@ -1,33 +1,16 @@
-python -m torch.distributed.launch --nproc_per_node=4 /mnt/ewwe/yts/at/atppo/tpp/main.py \
+python -m torch.distributed.launch --nproc_per_node=8 /mnt/ewwe/yts/at/atppo/tpp/main.py \
+    --actor_lr=2e-5 \
+    --actor_path=/mnt/ewwe/yts/at/atppo/saved_models/v6-80 \
     --apex_level=2 \
     --audio_length=10 \
-    --audio_path=/mnt/ewwe/yts/at/models/wavlmForV1.1.3 \
-    --batch_size=12 \
-    --grad_acc=1 \
-    --lr=1e-4 \
+    --batch_size=8 \
     --dont_show \
+    --grad_acc=4 \
     --model_save_path=/mnt/ewwe/yts/at/atppo/saved_models \
-    --model_name=v5 \
+    --model_name=v6.6 \
+    --reward_path=/mnt/ewwe/yts/at/atppo/saved_models/v6.5-5 \
     --save_interval=10 \
-    --text_path=/mnt/ewwe/yts/at/models/robertaForV3 \
+    --tokenizer_path=/mnt/ewwe/yts/at/models/robertaForV3 \
     --train_epochs=50 \
-    --transcripts=/mnt/ewwe/yts/at/spotify-960/transFor567.pkl \
-    > /mnt/ewwe/yts/at/atppo/logs/train500.log 2>&1
-sleep 1m
-
-sleep 1m
-python -m torch.distributed.launch --nproc_per_node=4 /mnt/ewwe/yts/at/atppo/tpp/main.py \
-    --apex_level=2 \
-    --audio_length=10 \
-    --audio_path=/mnt/ewwe/yts/at/models/wavlmForV1.1.3 \
-    --batch_size=12 \
-    --grad_acc=1 \
-    --lr=1e-4 \
-    --dont_show \
-    --model_save_path=/mnt/ewwe/yts/at/atppo/saved_models \
-    --model_name=v6.1 \
-    --save_interval=10 \
-    --text_path=/mnt/ewwe/yts/at/models/robertaForV3 \
-    --train_epochs=50 \
-    --transcripts=/mnt/ewwe/yts/at/spotify-960/transForTPP.pkl \
-    > /mnt/ewwe/yts/at/atppo/logs/train610.log 2>&1
+    --transcripts=/mnt/ewwe/yts/at/spotify-960/transForPPO.pkl \
+    > /mnt/ewwe/yts/at/atppo/logs/train660.log 2>&1

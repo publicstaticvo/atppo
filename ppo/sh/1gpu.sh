@@ -1,16 +1,14 @@
 python /mnt/ewwe/yts/at/atppo/tpp/main.py \
+    --actor_lr=2e-5 \
+    --actor_path=/mnt/ewwe/yts/at/atppo/saved_models/v6-80 \
     --apex_level=2 \
     --audio_length=10 \
-    --audio_path=/mnt/ewwe/yts/at/models/wavlmForV1.1.3 \
     --batch_size=1 \
-    --grad_acc=1 \
-    --lr=1e-4 \
-    --num_ends=100 \
-    --model_save_path=/mnt/ewwe/yts/at/atppo/ \
-    --model_name=test \
-    --save_interval=10 \
-    --save_tmp=/mnt/ewwe/yts/at/atppo/models/debug \
-    --text_path=/mnt/ewwe/yts/at/models/robertaForV3 \
+    --model_save_path=/mnt/ewwe/yts/at/atppo/saved_models \
+    --model_name=v6.6 \
+    --reward_path=/mnt/ewwe/yts/at/atppo/saved_models/v6.5-5 \
+    --save_interval=100 \
+    --tokenizer_path=/mnt/ewwe/yts/at/models/robertaForV3 \
     --train_epochs=1 \
-    --transcripts=/mnt/ewwe/yts/at/spotify-960/test.pkl \
+    --transcripts=/mnt/ewwe/yts/at/spotify-960/transForPPO.pkl \
     > /mnt/ewwe/yts/at/atppo/logs/test.log 2>&1

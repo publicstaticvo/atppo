@@ -9,7 +9,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from util import *
 from tpp.tpp_trainer import ATForTPP
-from rm.rm_trainer import ATRewardModel
+from configuration_at import ATConfig
+CONFIG = "config.json"
 
 
 def step(loss, model, args, mode, optimizer=None, scheduler=None):
@@ -30,12 +31,6 @@ def step(loss, model, args, mode, optimizer=None, scheduler=None):
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad()
-
-
-def construct_mean_map(d):
-    a = torch.arange(d)
-    a = a[None, :] + 1 - a[:, None]
-    return torch.clamp_min(a, 1).unsqueeze(-1)
 
 
 def split_audio_features(audio, audio_attention_mask):
@@ -59,34 +54,11 @@ def split_text_words(text, split_mark):
     return text_words
 
 
-def precompute_max_sim(s):
-    # Precompute the maximum of s(l, i, j) for all i, j and every possible k ≤ l ≤ i
-    m, n = s.shape[-2:]
-    s = s.tolist()
-    max_s = torch.zeros_like(s)
-    argmax_s = torch.zeros_like(s)
-    for j in range(m):
-        for i in range(n):
-            max_s[0][i][j] = s[0][i][j]
-            argmax_s[0][i][j] = 0
-            for k in range(1, i + 1):
-                if max_s[k-1][i][j] < s[k][i][j]:
-                    max_s[k][i][j] = s[k][i][j]
-                    argmax_s[k][i][j] = k
-                else:
-                    max_s[k][i][j] = max_s[k-1][i][j]
-                    argmax_s[k][i][j] = k - 1
-    return s, max_s, argmax_s
-
-
-class PPOTrainer:
+class UnsupervisedTrainer:
 
     def __init__(self, args):
-        # super(PPOTrainer, self).__init__()
-        self.actor, self.actor_optim, self.actor_scheduler, self.actor_mode = self.init_trainable(args, ATForTPP, args.actor_path)
-        self.ref = self.init_ref(args, ATForTPP, args.actor_path)
-        # self.critic, self.critic_optim, self.critic_scheduler = self.init_trainable(args, ATRewardModel, args.reward_path)
-        self.reward = self.init_ref(args, ATRewardModel, args.reward_path)
+        self.generator, self.g_optim, self.g_scheduler, self.g_mode = self.init_generator(args)
+        self.discriminator, self.d_optim, self.d_scheduler, self.d_mode = self.init_generator(args)
 
         self.args = args
         self.perform_mlm = True
@@ -100,65 +72,6 @@ class PPOTrainer:
         self.experience_count = 0
         self.mean_map = construct_mean_map(200).half()
 
-    def generate_trajectory(self):
-        predict = self.actor()
-        old_predict = self.ref()
-        return predict, old_predict
-
-    def kl(self, actor, ref, eps=1e-4):
-        if self.actor.num_ends == 1:
-            return torch.mean(torch.pow(actor - ref, 2))
-        return torch.mean(actor * torch.log(actor / torch.clamp_min(ref, eps)))
-
-    def compute_alignment(self, audio, text, audio_mask, text_mask, turn_id, text_valid, split_marks):
-        audio_features, text_words = self.reward.forward_features(audio, text, audio_mask, text_mask, turn_id, text_valid=text_valid)
-        audio_features = split_audio_features(audio_features, audio_mask)
-        text_words = split_text_words(text_words, split_marks)  # audio和text均为2B个
-        tpp_starts, tpp_ends = [], []  # 一个batch内部所有label打成一个1D数组
-        for a, t in zip(audio_features, text_words):
-            # a: M*H t: N*H
-            m = a.shape[0]
-            n = t.shape[0]
-            a = a.unsqueeze(1).repeat(1, n, 1).permute(2, 0, 1).triu().permute(1, 2, 0) / self.mean_map.to(audio.device)[:m, :m, :]
-            sim = torch.einsum("ijk,lk->ijl", normalize(a), normalize(t))  # M*M*N
-            sim, max_sim, argmax_sim = precompute_max_sim(sim)
-            # 动态规划
-            obj = [[float("-inf") for _ in range(n)] for _ in range(m)]
-            starts = [[0 for _ in range(n)] for _ in range(m)]  # 每次被选中的argmax_sim，由end_labels[i]指向start_labels[i]
-            ends = [[0 for _ in range(n)] for _ in range(m)]  # 由end_labels[i]指向end_labels[i-1]
-            for j in range(n):  # 前j个词
-                for i in range(m):  # 前i个语音token
-                    if j == 0:
-                        obj[i][j] = sim[0][i][j]
-                        starts[i][j] = 0
-                        ends[i][j] = -1
-                    else:
-                        for k in range(i):
-                            if obj[k][j-1] + max_sim[k][i][j] > obj[i][j]:
-                                obj[i][j] = obj[k][j-1] + max_sim[k][i][j]
-                                starts[i][j] = argmax_sim[k][i][j]
-                                ends[i][j] = k
-            # 最大匹配值
-            mm, argmax = float("-inf"), -1
-            for i, o in enumerate(obj):
-                if mm < o[-1]:
-                    mm = o[-1]
-                    argmax = i
-            # 回溯路径
-            s, e = [], [argmax]
-            for j in range(n - 1, -1, -1):
-                if j > 0:
-                    e.append(ends[e[-1]][j])
-                s.append(starts[e[-1]][j])
-            tpp_starts.extend(s[::-1])
-            tpp_ends.extend(e[::-1])
-
-        if self.args.num_ends == 1:
-            tpp_starts = (torch.tensor(tpp_starts, device=audio.device) / 100).to(dtype=audio.dtype)
-            tpp_ends = (torch.tensor(tpp_ends, device=audio.device) / 100).to(dtype=audio.dtype)
-            return tpp_starts, tpp_ends
-        return torch.LongTensor(tpp_starts), torch.LongTensor(tpp_ends)
-
     def valid_filter(self, outputs, valid, pooling_mode):
         words = valid.shape[0]
         if pooling_mode == "first":
@@ -168,6 +81,27 @@ class PPOTrainer:
             # 每个valid形状为Ni*L
             temp = outputs.unsqueeze(0).repeat(words, 1, 1).masked_fill(~valid.unsqueeze(-1), 0)
             return torch.sum(temp, dim=1) / torch.sum(valid, dim=1, keepdim=True)
+
+    def train_gan(self):
+        # Train Discriminator with real images
+        real_labels = torch.ones(images.size(0), 1)
+        outputs = self.discriminator(images)
+        d_loss_real = criterion(outputs, real_labels)
+        # Train Discriminator with fake images
+        z = torch.randn(images.size(0), 100)
+        fake_images = self.generator(z)
+        fake_labels = torch.zeros(images.size(0), 1)
+        outputs = self.discriminator(fake_images)
+        d_loss_fake = criterion(outputs, fake_labels)
+        # Backprop and optimize for discriminator
+        d_loss = d_loss_real + d_loss_fake
+        step(d_loss, self.discriminator, self.args, mode, self.d_optim, self.d_scheduler)
+        # Train Generator
+        z = torch.randn(images.size(0), 100)
+        fake_images = self.generator(z)
+        outputs = discriminator(fake_images)
+        g_loss = criterion(outputs, real_labels)
+        step(g_loss, self.generator, self.args, mode, self.g_optim, self.g_scheduler)
 
     def train_ppo(self, audio_input, text_input, audio_mask, text_mask, mlm_label=None, turn_id=None, start_valid=None, end_valid=None, splits=None):
         # 1 标注
@@ -190,27 +124,42 @@ class PPOTrainer:
         step(loss, self.actor, self.args, self.actor_mode, self.actor_optim, self.actor_scheduler)
         return mlm, mam, rs_loss, span_loss, kl, loss
 
-    def init_trainable(self, args, model_class, model_name):
+    def init_generator(self, args):
         # 1 ds config
-        if args.ds_config == "default":
-            args.ds_config = get_train_ds_config(args.batch_size, torch.cuda.device_count(), args.grad_acc, args.ds_stage, args.apex_level)
-        elif args.ds_config:
-            with open(args.ds_config, "w+") as f:
-                args.ds_config = json.load(f)
-        # 2 model
-        # TODO: config.audio.train_mode = 2 / 3 验证
-        model = model_class.from_pretrained(model_name)
-        # 3 optimizer
+        if args.model_path:
+            config = ATConfig.from_pretrained(args.model_path)
+        else:
+            config = ATConfig.from_json_files(os.path.join(args.audio_path, CONFIG), os.path.join(args.text_path, CONFIG))
+            config.set_length(int(args.audio_length * SAMPLE_RATE), args.text_length)
+            config.fused.num_hidden_layers = args.num_fused_layers
+            config.fused.num_ends = args.num_ends
+        config.audio.train_mode = 3
+        tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
+        # 4。读输入数据
+        train_data = TPPDataset(args.transcripts, args.num_turns, args.file_prefix)
+        # 5。整理config并建立模型
+        if args.no_pretrain:
+            model = ATForTPP(config)
+        elif args.model_path:
+            model = ATForTPP.from_pretrained(args.model_path, config=config)
+        else:
+            model = ATForTPP(config, args.audio_path, args.text_path)
+        # 6。数据并行
         no_decay = ['bias', 'LayerNorm.weight', 'LayerNorm.bias']
         decay = [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)]
         no_decay = [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)]
         ogp = [{"params": decay, "weight_decay": args.weight_decay}, {"params": no_decay, "weight_decay": 0.0}]
+        num_train_steps = args.train_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
         if args.apex_level > 0:
+            from apex import amp
+            from apex.optimizers import FusedAdam
             optimizer = FusedAdam(ogp, lr=args.lr, bias_correction=False)
         else:
             optimizer = AdamW(ogp, lr=args.lr, eps=1e-8)
-        warmup_steps = int(args.warmup * args.num_train_steps)
-        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=args.num_train_steps)
+        warmup_steps = int(args.warmup * num_train_steps)
+        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps,
+                                                    num_training_steps=num_train_steps)
+        c = DataCollatorForTPP(tokenizer, config, args.apex_level > 0)
         # 4 parallel
         if args.ds_config:
             model, optimizer, _, scheduler = deepspeed.initialize(model=model, optimizer=optimizer, config=args.ds_config, lr_scheduler=scheduler, dist_init_required=True)

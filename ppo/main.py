@@ -22,9 +22,9 @@ os.environ["NCCL_DEBUG"] = "WARN"
 if __name__ == "__main__":
     # 1.输入参数
     parser = argparse.ArgumentParser()
-    parser.add_argument("--apex_level", default=0, type=int)
     parser.add_argument("--actor_lr", default=1e-5, type=float)
     parser.add_argument("--actor_path", default=None, type=str, required=True)
+    parser.add_argument("--apex_level", default=0, type=int)
     parser.add_argument("--audio_length", default=10, type=float)
     parser.add_argument("--batch_size", default=256, type=int)
     parser.add_argument("--dont_show", action='store_true')

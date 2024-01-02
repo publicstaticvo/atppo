@@ -100,11 +100,6 @@ class PPOTrainer:
         self.experience_count = 0
         self.mean_map = construct_mean_map(200).half()
 
-    def generate_trajectory(self):
-        predict = self.actor()
-        old_predict = self.ref()
-        return predict, old_predict
-
     def kl(self, actor, ref, eps=1e-4):
         if self.actor.num_ends == 1:
             return torch.mean(torch.pow(actor - ref, 2))
@@ -198,7 +193,6 @@ class PPOTrainer:
             with open(args.ds_config, "w+") as f:
                 args.ds_config = json.load(f)
         # 2 model
-        # TODO: config.audio.train_mode = 2 / 3 验证
         model = model_class.from_pretrained(model_name)
         # 3 optimizer
         no_decay = ['bias', 'LayerNorm.weight', 'LayerNorm.bias']

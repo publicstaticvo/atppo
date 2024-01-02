@@ -11,12 +11,7 @@ from tpp.tpp_dataloader import TPPDataset
 from ppo_dataloader import DataCollatorForPPO
 from transformers import RobertaTokenizerFast
 from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
-
-
-sw = None
 SAMPLE_RATE = 16000
-CONFIG = "config.json"
-os.environ["NCCL_DEBUG"] = "WARN"
 
 
 def construct_mean_map(d):
@@ -103,7 +98,7 @@ if __name__ == "__main__":
     else:
         train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=SequentialSampler(train_data), shuffle=False)
     mean_map = construct_mean_map(200).to(args.device).half()
-    for i in range(args.train_epochs):
+    for i in range(2):
         for j, batch in enumerate(train_loader):
             a_input, a_mask, t_input, t_label, t_mask, s_valid, e_valid, token_type, split_marks = batch
             a_input, a_mask, t_input, t_label, t_mask, token_type, split_marks = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_label, t_mask, token_type, split_marks])
