@@ -116,8 +116,8 @@ class DataCollatorForRM:
             positive_audio_marks += (anchor_audio_marks[-1, 1] + 1)
             # 0在scale_audio_length之后会变-1
             audio_marks = torch.cat([anchor_audio_marks, positive_audio_marks], dim=0)
-            audio_valid, _ = compute_valid(audio_marks.tolist(), audio_length[1] * 2 + 2, self.config.audio.pooling_mode)
-            text_valid, num = compute_valid(text_marks, ml, self.config.text.pooling_mode)
+            audio_valid, _ = compute_valid_for_rm(audio_marks.tolist(), audio_length[1] * 2 + 2, self.config.audio.pooling_mode)
+            text_valid, num = compute_valid_for_rm(text_marks, ml, self.config.text.pooling_mode)
             assert num == len(audio_valid) == len(atr) + len(ptr)
             # 负采样
             negative_indices.append(negative_sampling(atr + ptr, self.num_negative))

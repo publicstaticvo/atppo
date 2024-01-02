@@ -42,6 +42,20 @@ class ATRewardModel(PreTrainedModel):
         # self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
         self.temperature = 1
 
+    def mlm_loss(self, text, label):
+        mlm_pre = self.mlm_head(text)
+        mlm_loss = self.ce(mlm_pre.view(-1, self.vocab_size), label.view(-1))  # 未mask的位置，label为-100。
+        if torch.isnan(mlm_loss):
+            mlm_loss = torch.tensor(0.0, device=text.device)
+        return mlm_loss
+
+    def mam_loss(self, audio, label, masked_indices):
+        mam_pre = self.mam_head(audio)
+        mam_loss = torch.tensor(0.0, device=audio.device)
+        if torch.sum(masked_indices[1]) != 0:
+            mam_loss = self.l1(mam_pre.masked_select(masked_indices[0]), label.masked_select(masked_indices[1]))
+        return mam_loss
+
     def valid_filter(self, outputs, valid, pooling_mode):
         words = valid.shape[0]
         if pooling_mode == "first":
@@ -67,17 +81,16 @@ class ATRewardModel(PreTrainedModel):
             losses += loss
         return losses / bs
 
+    def forward_features_for_ppo(self, audio_input, text_input, audio_mask, text_mask, turn_id=None, text_valid=None):
+        audio_features, text_features, _, _ = self.model(audio_input, text_input, audio_mask, text_mask, turn_id, False)
+        text_words = [self.valid_filter(text_features[i], text_valid[i], self.config.text.pooling_mode) for i in range(text_features.shape[0])]
+        return audio_features, text_words
+
     def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id=None, audio_valid=None, text_valid=None, neg=None, mlm_label=None):
         audio_features, text_features, mam_label, a_masked = self.model(audio_input, text_input, audio_mask, text_mask, turn_id, self.perform_mlm)
         rm_loss = self.word_level_contrastive(audio_features, text_features, audio_valid, text_valid, neg)
         if self.perform_mlm:
-            mam_pre = self.mam_head(audio_features)
-            mlm_pre = self.mlm_head(text_features)
-            mlm_loss = self.ce(mlm_pre.view(-1, self.vocab_size), mlm_label.view(-1))  # 未mask的位置，label为-100。
-            if torch.isnan(mlm_loss):
-                mlm_loss = torch.tensor(0.0, device=text_input.device)
-            mam_loss = torch.tensor(0.0, device=text_input.device)
-            if torch.sum(a_masked[1]) != 0:
-                mam_loss = self.l1(mam_pre.masked_select(a_masked[0]), mam_label.masked_select(a_masked[1]))
-            return mlm_loss, mam_loss, rm_loss
+            mlm = self.mlm_loss(text_features, mlm_label)
+            mam = self.mam_loss(audio_features, mam_label, a_masked)
+            return mlm, mam, rm_loss
         return 0, 0, rm_loss

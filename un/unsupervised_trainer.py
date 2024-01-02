@@ -83,7 +83,7 @@ class PPOTrainer:
 
     def __init__(self, args):
         # super(PPOTrainer, self).__init__()
-        self.actor, self.actor_optim, self.actor_scheduler, self.actor_mode = self.init_trainable(args, ATForTPP, args.actor_path, args.actor_lr)
+        self.actor, self.actor_optim, self.actor_scheduler, self.actor_mode = self.init_trainable(args, ATForTPP, args.actor_path)
         self.ref = self.init_ref(args, ATForTPP, args.actor_path)
         # self.critic, self.critic_optim, self.critic_scheduler = self.init_trainable(args, ATRewardModel, args.reward_path)
         self.reward = self.init_ref(args, ATRewardModel, args.reward_path)
@@ -190,7 +190,7 @@ class PPOTrainer:
         step(loss, self.actor, self.args, self.actor_mode, self.actor_optim, self.actor_scheduler)
         return mlm, mam, rs_loss, span_loss, kl, loss
 
-    def init_trainable(self, args, model_class, model_name, lr):
+    def init_trainable(self, args, model_class, model_name):
         # 1 ds config
         if args.ds_config == "default":
             args.ds_config = get_train_ds_config(args.batch_size, torch.cuda.device_count(), args.grad_acc, args.ds_stage, args.apex_level)
@@ -206,9 +206,9 @@ class PPOTrainer:
         no_decay = [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)]
         ogp = [{"params": decay, "weight_decay": args.weight_decay}, {"params": no_decay, "weight_decay": 0.0}]
         if args.apex_level > 0:
-            optimizer = FusedAdam(ogp, lr=lr, bias_correction=False)
+            optimizer = FusedAdam(ogp, lr=args.lr, bias_correction=False)
         else:
-            optimizer = AdamW(ogp, lr=lr, eps=1e-8)
+            optimizer = AdamW(ogp, lr=args.lr, eps=1e-8)
         warmup_steps = int(args.warmup * args.num_train_steps)
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=args.num_train_steps)
         # 4 parallel
