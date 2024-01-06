@@ -7,8 +7,8 @@ python -m torch.distributed.launch --nproc_per_node=4 main.py --task mosei --don
 python -m torch.distributed.launch --nproc_per_node=4 main.py --task mosei --dont_show --output_file o1ddp.csv --epochs 50 --batch_size 32 --accumulate_num 4 --lr 2e-5 --model ${li[$i]}
 python -m torch.distributed.launch --nproc_per_node=4 main.py --task mosei --dont_show --output_file o1ddp.csv --epochs 5 --batch_size 32 --accumulate_num 1 --lr 1e-5 --model ${li[$i]}
 python -m torch.distributed.launch --nproc_per_node=4 main.py --task mosei --dont_show --output_file o1ddp.csv --epochs 50 --batch_size 32 --accumulate_num 4 --lr 1e-5 --model ${li[$i]}
-python -m torch.distributed.launch --nproc_per_node=4 main.py --task iemocap --dont_show --output_file o1ddp.csv --epochs 5 --batch_size 32 --accumulate_num 1 --lr 2e-5 --model ${li[$i]}
-python -m torch.distributed.launch --nproc_per_node=4 main.py --task iemocap --dont_show --output_file o1ddp.csv --epochs 50 --batch_size 32 --accumulate_num 4 --lr 2e-5 --model ${li[$i]}
-python -m torch.distributed.launch --nproc_per_node=4 main.py --task iemocap --dont_show --output_file o1ddp.csv --epochs 5 --batch_size 32 --accumulate_num 1 --lr 1e-5 --model ${li[$i]}
-python -m torch.distributed.launch --nproc_per_node=4 main.py --task iemocap --dont_show --output_file o1ddp.csv --epochs 50 --batch_size 32 --accumulate_num 4 --lr 1e-5 --model ${li[$i]}
+python -m torch.distributed.launch --nproc_per_node=4 main.py --task ic11 --dont_show --output_file o1ddp.csv --epochs 5 --batch_size 32 --accumulate_num 1 --lr 2e-5 --model ${li[$i]}
+python -m torch.distributed.launch --nproc_per_node=4 main.py --task ic11 --dont_show --output_file o1ddp.csv --epochs 50 --batch_size 32 --accumulate_num 4 --lr 2e-5 --model ${li[$i]}
+python -m torch.distributed.launch --nproc_per_node=4 main.py --task ic11 --dont_show --output_file o1ddp.csv --epochs 5 --batch_size 32 --accumulate_num 1 --lr 1e-5 --model ${li[$i]}
+python -m torch.distributed.launch --nproc_per_node=4 main.py --task ic11 --dont_show --output_file o1ddp.csv --epochs 50 --batch_size 32 --accumulate_num 4 --lr 1e-5 --model ${li[$i]}
 done

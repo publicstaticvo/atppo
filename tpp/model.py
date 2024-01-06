@@ -7,7 +7,7 @@ from transformers import PreTrainedModel
 from transformers.models.roberta.modeling_roberta import RobertaModel, RobertaLayer, RobertaEncoder
 
 
-class ATModel(PreTrainedModel):
+class ATModelTPP(PreTrainedModel):
     config_class = ATConfig
     _keys_to_ignore_on_load_missing = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head", r"position_ids", r"mask_token"]
     # _keys_to_ignore_on_save = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head"]
@@ -15,7 +15,7 @@ class ATModel(PreTrainedModel):
     supports_gradient_checkpointing = True
 
     def __init__(self, config: ATConfig, audio=None, text=None, tpp=True):
-        super(ATModel, self).__init__(config)
+        super(ATModelTPP, self).__init__(config)
         self.hidden_size = config.text.hidden_size
         self.tpp = tpp
 

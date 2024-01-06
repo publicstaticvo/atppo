@@ -1,6 +1,6 @@
-python /mnt/ewwe/yts/at/atppo/tpp/main.py \
+python /mnt/ewwe/yts/at/atppo/ppo/main.py \
     --actor_lr=2e-5 \
-    --actor_path=/mnt/ewwe/yts/at/atppo/saved_models/v6-80 \
+    --actor_path=/mnt/ewwe/yts/at/atppo/saved_models/v6.0.2-60 \
     --apex_level=2 \
     --audio_length=10 \
     --batch_size=1 \

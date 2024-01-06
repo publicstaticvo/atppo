@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from model import ATModel
+from tpp.model import ATModelTPP
 from configuration_at import ATConfig
 from transformers import PreTrainedModel
 from wavlm import WavLMMAMHead, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder
@@ -16,11 +16,11 @@ class ATForTPP(PreTrainedModel):
         if isinstance(module, (RobertaEncoder, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder)):
             module.gradient_checkpointing = value
 
-    def __init__(self, config: ATConfig, audio=None, text=None):
+    def __init__(self, config: ATConfig, audio=None, text=None, *args, **kwargs):
         super(ATForTPP, self).__init__(config)
         self.hidden_size = config.text.hidden_size
         self.num_ends = config.fused.num_ends
-        self.model = ATModel(config, audio, text)
+        self.model = ATModelTPP(config, audio, text)
         self.mlm_head = RobertaLMHead(config.text)
         self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
         self.selection_head = nn.Linear(self.hidden_size, 4)

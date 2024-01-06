@@ -5,16 +5,14 @@ from transformers import PreTrainedModel
 from transformers.models.roberta.modeling_roberta import RobertaModel, RobertaLayer, RobertaEncoder
 
 
-class ATModel(PreTrainedModel):
+class ATModelRM(PreTrainedModel):
     config_class = ATConfig
     # _keys_to_ignore_on_save = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head"]
     supports_gradient_checkpointing = True
 
     def __init__(self, config: ATConfig, audio=None, text=None, tpp=True):
-        super(ATModel, self).__init__(config)
-        self.perform_mlm = config.perform_mlm
+        super(ATModelRM, self).__init__(config)
         self.tpp = tpp
-
         if audio is None:
             self.audio_encoder = WavLMForMultiTurn(config.audio)
             self.text_encoder = RobertaModel(config.text)

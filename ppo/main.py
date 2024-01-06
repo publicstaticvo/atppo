@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import tqdm
 import argparse
 import numpy as np
@@ -35,6 +36,7 @@ if __name__ == "__main__":
     parser.add_argument("--grad_norm", default=0., type=float)
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument("--loss_scale", default=0., type=float)
+    parser.add_argument("--max_length", default=512, type=int)
     parser.add_argument("--model_name", default="v1.1", type=str)
     parser.add_argument("--model_save_path", default=None, type=str)
     parser.add_argument("--num_turns", default=8, type=int)
@@ -64,10 +66,12 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     # 3。读输入数据
-    tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
+    tokenizer = RobertaTokenizerFast.from_pretrained(args.tokenizer_path)
     train_data = TPPDataset(args.transcripts, args.num_turns, args.file_prefix)
+    args.num_train_steps = args.train_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
     # 4。建立模型
     trainer = PPOTrainer(args)
+    args.num_ends = trainer.num_ends
     c = DataCollatorForPPO(args, tokenizer)
     if args.local_rank >= 0:
         train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=20)
@@ -83,10 +87,10 @@ if __name__ == "__main__":
             train_loader.sampler.set_epoch(i)
         losses = [0, 0]
         for j, batch in enumerate(inner_it):
-            a_input, a_mask, t_input, t_label, t_mask, s_valid, e_valid, token_type, split_marks = batch
-            a_input, a_mask, t_input, t_label, t_mask, token_type, split_marks = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_label, t_mask, token_type, split_marks])
+            a_input, a_mask, full_text, t_input, t_label, t_mask, s_valid, e_valid, token_type, split_marks = batch
+            a_input, a_mask, full_text, t_input, t_label, t_mask, token_type = map(lambda x: x.to(args.device), [a_input, a_mask, full_text, t_input, t_label, t_mask, token_type])
             s_valid, e_valid = map(lambda x: [t.to(args.device) for t in x], [s_valid, e_valid])
-            mlm, mam, rs, span, kl, loss = trainer.train_ppo(a_input, t_input, a_mask, t_mask, t_label, token_type, s_valid, e_valid, split_marks)
+            mlm, mam, rs, span, kl, loss = trainer.train_ppo(a_input, a_mask, full_text, t_input, t_mask, t_label, token_type, s_valid, e_valid, split_marks)
             if not args.dont_show and get_rank() == 0:
                 inner_it.set_postfix_str(f"loss: {loss:.4f}|rs: {rs:.4f}|sp: {span:.4f}|kl: {kl:.4f}")
         if get_rank() == 0 and ((i + 1) % args.save_interval == 0 or args.save_tmp) and args.model_save_path:

@@ -5,11 +5,12 @@ from torch.optim import AdamW
 from apex.optimizers import FusedAdam
 from torch.nn.functional import normalize
 from transformers import get_linear_schedule_with_warmup
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 from util import *
+from parallel import DDP
 from tpp.tpp_trainer import ATForTPP
 from rm.rm_trainer import ATRewardModel
+SAMPLE_RATE = 1600
 
 
 def step(loss, model, args, mode, optimizer=None, scheduler=None):
@@ -40,14 +41,15 @@ def construct_mean_map(d):
 
 def split_audio_features(audio, audio_attention_mask):
     bs = audio_attention_mask.shape[0] // 2
-    audio_attention_mask_sum = torch.clamp_max(torch.sum(audio_attention_mask.view(bs, 2, -1), dim=-1) // 320, 99)
+    audio_attention_mask_sum = torch.clamp_max(audio_attention_mask.view(bs, 2, -1).sum(-1).div(SAMPLE_RATE, rounding_mode='trunc'), 99)
     audio_attention_mask_sum[:, 0] += 1
+    audio_attention_mask_sum[:, 1] += (audio_attention_mask_sum[:, 0] + 1)
     audio_attention_mask_sum = audio_attention_mask_sum.long().tolist()
+    # print(f"{torch.distributed.get_rank()}, {audio_attention_mask.shape}, {audio_attention_mask.sum(-1)}, {audio.shape}, {audio_attention_mask_sum}")
     audio_features = []
     for i in range(bs):
-        audio_features.append(audio[1:audio_attention_mask_sum[i][0]])
-        audio_features.append(audio[audio_attention_mask_sum[i][0] + 1:])
-        assert audio_features[-1].shape[0] == audio_attention_mask_sum[i][1]
+        audio_features.append(audio[i, 1:audio_attention_mask_sum[i][0]])
+        audio_features.append(audio[i, audio_attention_mask_sum[i][0]+1:audio_attention_mask_sum[i][1]])
     return audio_features
 
 
@@ -62,11 +64,11 @@ def split_text_words(text, split_mark):
 def precompute_max_sim(s):
     # Precompute the maximum of s(l, i, j) for all i, j and every possible k ≤ l ≤ i
     m, n = s.shape[-2:]
+    max_s = torch.zeros_like(s).tolist()
+    argmax_s = torch.zeros_like(s).tolist()
     s = s.tolist()
-    max_s = torch.zeros_like(s)
-    argmax_s = torch.zeros_like(s)
-    for j in range(m):
-        for i in range(n):
+    for j in range(n):
+        for i in range(m):
             max_s[0][i][j] = s[0][i][j]
             argmax_s[0][i][j] = 0
             for k in range(1, i + 1):
@@ -83,14 +85,15 @@ class PPOTrainer:
 
     def __init__(self, args):
         # super(PPOTrainer, self).__init__()
-        self.actor, self.actor_optim, self.actor_scheduler, self.actor_mode = self.init_trainable(args, ATForTPP, args.actor_path, args.actor_lr)
-        self.ref = self.init_ref(args, ATForTPP, args.actor_path)
+        self.actor, self.actor_config, self.actor_mode, self.actor_optim, self.actor_scheduler = self.init_trainable(args, ATForTPP, args.actor_path, args.actor_lr)
+        self.ref, _ = self.init_ref(args, ATForTPP, args.actor_path)
         # self.critic, self.critic_optim, self.critic_scheduler = self.init_trainable(args, ATRewardModel, args.reward_path)
-        self.reward = self.init_ref(args, ATRewardModel, args.reward_path)
-
+        self.reward, self.reward_config = self.init_ref(args, ATRewardModel, args.reward_path)
+        
         self.args = args
         self.perform_mlm = True
-        self.hidden_size = self.actor.module.config.text.hidden_size if hasattr(self.actor, "module") else self.actor.config.text.hidden_size
+        self.num_ends = self.actor_config.fused.num_ends
+        self.hidden_size = self.actor_config.text.hidden_size
         self.kl_ctl = 0.1
         self.clip_reward_value = 10
         self.cliprange = 0.2
@@ -101,12 +104,12 @@ class PPOTrainer:
         self.mean_map = construct_mean_map(200).half()
 
     def kl(self, actor, ref, eps=1e-4):
-        if self.actor.num_ends == 1:
+        if self.args.num_ends == 1:
             return torch.mean(torch.pow(actor - ref, 2))
         return torch.mean(actor * torch.log(actor / torch.clamp_min(ref, eps)))
 
     def compute_alignment(self, audio, text, audio_mask, text_mask, turn_id, text_valid, split_marks):
-        audio_features, text_words = self.reward.forward_features(audio, text, audio_mask, text_mask, turn_id, text_valid=text_valid)
+        audio_features, text_words = self.reward.forward_features_for_ppo(audio, text, audio_mask, text_mask, turn_id, text_valid=text_valid)
         audio_features = split_audio_features(audio_features, audio_mask)
         text_words = split_text_words(text_words, split_marks)  # audio和text均为2B个
         tpp_starts, tpp_ends = [], []  # 一个batch内部所有label打成一个1D数组
@@ -114,7 +117,7 @@ class PPOTrainer:
             # a: M*H t: N*H
             m = a.shape[0]
             n = t.shape[0]
-            a = a.unsqueeze(1).repeat(1, n, 1).permute(2, 0, 1).triu().permute(1, 2, 0) / self.mean_map.to(audio.device)[:m, :m, :]
+            a = a.unsqueeze(1).repeat(1, m, 1).permute(2, 0, 1).triu().permute(1, 2, 0) / self.mean_map.to(audio.device)[:m, :m, :]
             sim = torch.einsum("ijk,lk->ijl", normalize(a), normalize(t))  # M*M*N
             sim, max_sim, argmax_sim = precompute_max_sim(sim)
             # 动态规划
@@ -164,16 +167,20 @@ class PPOTrainer:
             temp = outputs.unsqueeze(0).repeat(words, 1, 1).masked_fill(~valid.unsqueeze(-1), 0)
             return torch.sum(temp, dim=1) / torch.sum(valid, dim=1, keepdim=True)
 
-    def train_ppo(self, audio_input, text_input, audio_mask, text_mask, mlm_label=None, turn_id=None, start_valid=None, end_valid=None, splits=None):
+    def train_ppo(self, audio_input, audio_mask, full_text, text_input, text_mask, mlm_label=None, turn_id=None, start_valid=None, end_valid=None, splits=None):
         # 1 标注
         with torch.no_grad():
-            tpp_starts, tpp_ends = self.compute_alignment(audio_input, text_input, audio_mask, text_mask, turn_id, start_valid, splits)
+            bs, text_len = mlm_label.shape
+            positive_audio_input = audio_input.view(bs, 3, -1)[:, :2].contiguous().view(bs * 2, -1)
+            positive_audio_mask = audio_mask.view(bs, 3, -1)[:, :2].contiguous().view(bs * 2, -1)
+            positive_text_mask = text_mask.view(bs, 2, -1)[:, 0]
+            positive_turn_id = turn_id.view(bs, 2, -1)[:, 0]
+            tpp_starts, tpp_ends = self.compute_alignment(positive_audio_input, full_text, positive_audio_mask, positive_text_mask, positive_turn_id, start_valid, splits)
         # 2 求偏差，actor step
         fused_features, mam_label, a_masked = self.actor.model(audio_input, text_input, audio_mask, text_mask, turn_id, self.perform_mlm)
-        bs, text_len = mlm_label.shape
         fused_features = fused_features.view(bs, 4, -1, self.hidden_size)
         text_fused = fused_features[:, 0, :text_len]
-        start_valid, end_valid = map(lambda x: torch.cat(x), [start_valid, end_valid])
+        start_valid, end_valid = map(lambda x: torch.cat(x).view(bs, -1), [start_valid, end_valid])
         mlm = self.actor.mlm_loss(text_fused, mlm_label)
         mam = self.actor.mam_loss(fused_features[:, 0, text_len:], mam_label, a_masked)
         rs_loss = self.actor.response_selection(fused_features, bs)
@@ -194,6 +201,7 @@ class PPOTrainer:
                 args.ds_config = json.load(f)
         # 2 model
         model = model_class.from_pretrained(model_name)
+        config = model.config
         # 3 optimizer
         no_decay = ['bias', 'LayerNorm.weight', 'LayerNorm.bias']
         decay = [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)]
@@ -218,7 +226,7 @@ class PPOTrainer:
             if args.local_rank >= 0:
                 model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
                 model_mode += "ddp"
-        return model, optimizer, scheduler, model_mode
+        return model, config, model_mode, optimizer, scheduler
 
     def init_ref(self, args, model_class, model_name):
         # 1 ds config
@@ -226,6 +234,7 @@ class PPOTrainer:
             args.ds_config = get_eval_ds_config(args.batch_size, args.ds_stage, args.apex_level)
         # 2 model
         model = model_class.from_pretrained(model_name)
+        config = model.config
         # 3 parallel
         if args.ds_config:
             model, *_ = deepspeed.initialize(model=model, config=args.ds_config, dist_init_required=True)
@@ -235,7 +244,7 @@ class PPOTrainer:
                 model = amp.initialize(model, opt_level=f"O{args.apex_level}", keep_batchnorm_fp32=False if args.apex_level >= 2 else None)
             if args.local_rank >= 0:
                 model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
-        return model
+        return model, config
 
     def save_pretrained(self, path):
         temp = self.actor

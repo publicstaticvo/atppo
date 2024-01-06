@@ -1,5 +1,5 @@
 import torch
-from model import ATModel
+from rm.model import ATModelRM
 from configuration_at import ATConfig
 from transformers import PreTrainedModel
 from torch.nn.functional import normalize
@@ -24,20 +24,19 @@ class ATRewardModel(PreTrainedModel):
         if isinstance(module, (RobertaEncoder, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder)):
             module.gradient_checkpointing = value
 
-    def __init__(self, config: ATConfig, audio=None, text=None):
+    def __init__(self, config: ATConfig, audio=None, text=None, *args, **kwargs):
         super(ATRewardModel, self).__init__(config)
         self.hidden_size = config.text.hidden_size
-        self.model = ATModel(config, audio, text, tpp=False)
-        self.num_negative = config.num_negative
-        self.perform_mlm = config.perform_mlm
-        if self.perform_mlm:
-            self.mlm_head = RobertaLMHead(config.text)
-            self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
-            self.vocab_size = config.text.vocab_size
-            self.ce = torch.nn.CrossEntropyLoss()
-            self.l1 = torch.nn.L1Loss()
-        # self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
-        # self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
+        self.model = ATModelRM(config, audio, text, tpp=False)
+        if hasattr(config, "perform_mlm"):
+            self.num_negative = config.num_negative
+            self.perform_mlm = config.perform_mlm
+            if self.perform_mlm:
+                self.mlm_head = RobertaLMHead(config.text)
+                self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
+                self.vocab_size = config.text.vocab_size
+                self.ce = torch.nn.CrossEntropyLoss()
+                self.l1 = torch.nn.L1Loss()
         self.temperature = 1
 
     def mlm_loss(self, text, label):
@@ -81,7 +80,7 @@ class ATRewardModel(PreTrainedModel):
 
     def forward_features_for_ppo(self, audio_input, text_input, audio_mask, text_mask, turn_id=None, text_valid=None):
         audio_features, text_features, _, _ = self.model(audio_input, text_input, audio_mask, text_mask, turn_id, False)
-        text_words = [self.valid_filter(text_features[i], text_valid[i], self.config.text.pooling_mode) for i in range(text_features.shape[0])]
+        text_words = [self.valid_filter(text_features[i], torch.cat(text_valid[2*i:2*i+2]), self.config.text.pooling_mode) for i in range(text_features.shape[0])]
         return audio_features, text_words
 
     def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id=None, audio_valid=None, text_valid=None, neg=None, mlm_label=None):

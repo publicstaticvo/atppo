@@ -37,7 +37,7 @@ class DataCollatorForPPO:
         return text_input, labels
 
     def __call__(self, batch):
-        audios, a_mask, masked_text, text_labels, t_mask, start_valid, end_valid, valid_filter, token_type, split_marks = [], [], [], [], [], [], [], [], [], []
+        audios, a_mask, text, masked_text, text_labels, t_mask, start_valid, end_valid, valid_filter, token_type, split_marks = [], [], [], [], [], [], [], [], [], [], []
         ml = 0
         for item in batch:
             ml = max([ml, len(item[1]) + len(item[4]) + len(item[8]) - 2, len(item[1]) + len(item[7]) + len(item[8]) - 2])
@@ -47,6 +47,8 @@ class DataCollatorForPPO:
             aa, at, atr, pa, pt, ptr, na, nt, history = item
             # 文本pad之后有两个
             history, at, pt, nt = map(lambda x: torch.LongTensor(x), [history, at, pt, nt])
+            t = torch.cat([history, at[1:], pt[1:]])
+            t, _ = pad_cut(t, ml)
             ht, h_mlm_label = self.get_mlm_instance(history)
             at, a_mlm_label = self.get_mlm_instance(at[1:])
             pt, p_mlm_label = self.get_mlm_instance(pt[1:])
@@ -70,6 +72,7 @@ class DataCollatorForPPO:
             start_valid.extend([asv, psv])
             end_valid.extend([aev, pev])
             split_marks.append(len(asl))
+            text.append(t)
             p_token_type = torch.cat([torch.zeros(offset_p + 1), torch.ones(ml - offset_p - 1)]).long()
             n_token_type = torch.cat([torch.zeros(offset_n + 1), torch.ones(ml - offset_n - 1)]).long()
             mlm_label, _ = pad_cut(torch.cat([h_mlm_label, a_mlm_label, p_mlm_label]), ml, -100)
@@ -84,8 +87,9 @@ class DataCollatorForPPO:
             na, n_aam = pad_cut(na, self.audio_length)
             audios.extend([aa, pa, na])
             a_mask.extend([a_aam, p_aam, n_aam])
-        audios, a_mask, masked_text, text_labels, t_mask, token_type, split_marks = map(
+        audios, a_mask, text, masked_text, text_labels, t_mask, token_type = map(
             lambda x: torch.stack(x, dim=0),
-            [audios, a_mask, masked_text, text_labels, t_mask, token_type, split_marks]
+            [audios, a_mask, text, masked_text, text_labels, t_mask, token_type]
         )
-        return audios, a_mask, masked_text, text_labels, t_mask, start_valid, end_valid, token_type, split_marks
+        # split_marks = torch.LongTensor(split_marks)
+        return audios, a_mask, text, masked_text, text_labels, t_mask, start_valid, end_valid, token_type, split_marks

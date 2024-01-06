@@ -4,7 +4,7 @@ from torch import nn
 from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
-from tpp.model import ATModel
+from tpp.model import ATModelTPP
 from configuration_at import ATConfig
 
 
@@ -16,9 +16,9 @@ class ATForSequenceClassification(PreTrainedModel):
     def __init__(self, config: ATConfig, num_class, ckpt_path=None, *model_args, **model_kwargs):
         super(ATForSequenceClassification, self).__init__(config)
         if ckpt_path:
-            self.model = ATModel.from_pretrained(ckpt_path, config=config, tpp=False)
+            self.model = ATModelTPP.from_pretrained(ckpt_path, config=config, tpp=False)
         else:
-            self.model = ATModel(config=config, tpp=False)
+            self.model = ATModelTPP(config=config, tpp=False)
         self.num_class = num_class
         hidden_size = config.text.hidden_size
         self.head = nn.Sequential(nn.Linear(hidden_size, hidden_size), ACT2FN['gelu'], nn.Linear(hidden_size, self.num_class))

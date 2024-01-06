@@ -122,7 +122,6 @@ class DataCollatorForRM:
             # 负采样
             negative_indices.append(negative_sampling(atr + ptr, self.num_negative))
 
-            text, tam = pad_cut(text, ml)
             audios.extend([aa, pa])
             a_mask.extend([a_aam, p_aam])
             texts.append(text)
