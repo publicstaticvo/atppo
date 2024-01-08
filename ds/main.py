@@ -3,14 +3,12 @@ import sys
 import math
 import tqdm
 import time
-import random
 import argparse
 import numpy as np
 from apex import amp
 from apex.optimizers import FusedAdam
-from modeling_at import ATForSequenceClassification
-from torch.nn.parallel import DistributedDataParallel as DDP
-from ds_dataloader import DownstreamDataset, DataCollatorForDownstream
+from at_downstream import ATForSequenceClassification
+from downstream_dataset import DownstreamDataset, DataCollatorForDownstream
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 from transformers import RobertaTokenizerFast, get_linear_schedule_with_warmup
 from downstream_metrics import downstream_metrics
@@ -18,7 +16,6 @@ from sklearn.metrics import accuracy_score
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
-from configuration_at import ATConfig
 
 os.environ["NCCL_DEBUG"] = "WARN"
 LABEL_NUM = {'mosi': 1, 'meld': 7, 'snips': 7, 'mosei': 1, 'mintrec': 20, 'iemocap': 6}

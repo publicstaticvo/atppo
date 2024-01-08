@@ -11,9 +11,9 @@ import datetime
 print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
-from rm_trainer import ATRewardModel
-from configuration_at import ATConfig
-from rm_dataloader import RMDataset, DataCollatorForRM
+from word_rm import WordAlignTrainer
+from sentence_rm import SentenceAlignTrainer
+from dataset import ATDataset, SentenceAlignDataset, DataCollatorForSentenceRM
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 from transformers import RobertaTokenizerFast, AdamW, get_linear_schedule_with_warmup
@@ -23,10 +23,30 @@ SAMPLE_RATE = 16000
 CONFIG = "config.json"
 os.environ["NCCL_DEBUG"] = "WARN"
 
+
+def train_step_word(rm_model, b):
+    a_input, a_mask, a_valid, t_input, t_mask, t_valid, turn_id, neg, mlm_labels = b
+    a_input, a_mask, t_input, t_mask, turn_id = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_mask, turn_id])
+    a_valid, t_valid, neg = map(lambda x: [t.to(args.device) for t in x], [a_valid, t_valid, neg])
+    if mlm_labels is not None:
+        mlm_labels.to(args.device)
+    mlm, mam, rm = rm_model(a_input, t_input, a_mask, t_mask, turn_id, a_valid, t_valid, neg, mlm_labels)
+    loss = mlm + mam + rm
+    return loss, rm
+
+
+def train_step_sentence(rm_model, b):
+    a_input, a_mask, t_input, t_mask, turn_id = b
+    a_input, a_mask, t_input, t_mask, turn_id = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_mask, turn_id])
+    loss = rm_model(a_input, t_input, a_mask, t_mask, turn_id)
+    return loss
+
+
 if __name__ == "__main__":
     # 1.输入参数
     parser = argparse.ArgumentParser()
     parser.add_argument("--apex_level", default=0, type=int)
+    parser.add_argument("--align_mode", type=str, required=True, choices=["word", "sent"])
     parser.add_argument("--audio_length", default=10, type=float)
     parser.add_argument("--audio_path", default=None, type=str)
     parser.add_argument("--audio_pooling_mode", default="mean", type=str, choices=["first", "mean"])
@@ -37,7 +57,6 @@ if __name__ == "__main__":
     parser.add_argument("--ds_stage", default=2, type=int)
     parser.add_argument("--file_prefix", default=None, type=str)
     parser.add_argument("--grad_acc", default=16, type=int)
-    parser.add_argument("--grad_ckpt", action='store_true')
     parser.add_argument("--grad_norm", default=0., type=float)
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument("--loss_scale", default=0., type=float)
@@ -48,7 +67,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_negative", default=0, type=int)
     parser.add_argument("--num_turns", default=8, type=int)
     parser.add_argument("--num_fused_layers", default=1, type=int)
-    parser.add_argument("--perform_mlm", action='store_true')
     parser.add_argument("--save_interval", default=100, type=int)
     parser.add_argument("--save_tmp", default=None, type=str)
     parser.add_argument('--seed', type=int, default=42)
@@ -87,18 +105,20 @@ if __name__ == "__main__":
         config = ATConfig.from_json_files(os.path.join(args.audio_path, CONFIG), os.path.join(args.text_path, CONFIG))
         config.set_length(int(args.audio_length * SAMPLE_RATE), args.text_length)
         config.fused.num_hidden_layers = args.num_fused_layers
-    config.audio.train_mode = 2
-    config.perform_mlm = args.perform_mlm
     config.num_negative = args.num_negative
     config.set_pooling_mode(args.audio_pooling_mode, args.text_pooling_mode)
     tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
     # 4。读输入数据
-    train_data = RMDataset(args.transcripts, args.num_turns, args.file_prefix)
-    # 5。整理config并建立模型
-    if args.model_path:
-        model = ATRewardModel.from_pretrained(args.model_path, config=config)
+    if args.align_mode == "word":
+        model_class = WordAlignTrainer
+        train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
     else:
-        model = ATRewardModel(config, args.audio_path, args.text_path)
+        model_class = SentenceAlignTrainer
+        train_data = SentenceAlignDataset(args.transcripts, args.num_turns, args.file_prefix)
+    if args.model_path:
+        model = model_class.from_pretrained(args.model_path, config=config)
+    else:
+        model = model_class(config, args.audio_path, args.text_path)
     # 6。数据并行
     no_decay = ['bias', 'LayerNorm.weight', 'LayerNorm.bias']
     decay = [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)]
@@ -113,7 +133,7 @@ if __name__ == "__main__":
         optimizer = AdamW(ogp, lr=args.lr, eps=1e-8)
     warmup_steps = int(args.warmup * num_train_steps)
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_train_steps)
-    c = DataCollatorForRM(tokenizer, config, args.apex_level > 0)
+    c = DataCollatorForSentenceRM(tokenizer, config, args.apex_level > 0)
     if args.ds_config:
         model, optimizer, _, scheduler = deepspeed.initialize(model=model, optimizer=optimizer, config=args.ds_config, lr_scheduler=scheduler, dist_init_required=True)
     else:
@@ -129,13 +149,7 @@ if __name__ == "__main__":
         train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=20)
     else:
         train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data))
-    if args.grad_ckpt:
-        if isinstance(model, DDP):
-            model.module.gradient_checkpointing_enable()
-        else:
-            model.gradient_checkpointing_enable()
     model.train()
-    losses = []
     outer_it = tqdm.trange(args.current_epochs, args.train_epochs)
     for i in outer_it:
         inner_it = train_loader if args.dont_show or get_rank() else tqdm.tqdm(train_loader, desc="Inner")
@@ -144,28 +158,23 @@ if __name__ == "__main__":
             train_loader.sampler.set_epoch(i)
         losses = [0, 0]
         for j, batch in enumerate(inner_it):
-            a_input, a_mask, a_valid, t_input, t_mask, t_valid, turn_id, neg, mlm_labels = batch
-            a_input, a_mask, t_input, t_mask, turn_id = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_mask, turn_id])
-            a_valid, t_valid, neg = map(lambda x: [t.to(args.device) for t in x], [a_valid, t_valid, neg])
-            if mlm_labels is not None: mlm_labels.to(args.device)
-            mlm, mam, rm = model(a_input, t_input, a_mask, t_mask, turn_id, a_valid, t_valid, neg, mlm_labels)
-            loss = mlm + mam + rm
-            losses[0] += float(loss)
-            losses[1] += float(rm)
+            total_loss, rm_loss = train_step_word(model, batch)
+            losses[0] += float(total_loss)
+            losses[1] += float(rm_loss)
             if not args.dont_show and get_rank() == 0:
-                inner_it.set_postfix_str(f"loss: {loss:.4f}|rm: {rm:.4f}")
-            loss = loss / args.grad_acc
+                inner_it.set_postfix_str(f"loss: {total_loss:.4f}|rm: {rm_loss:.4f}")
+            total_loss = total_loss / args.grad_acc
             if args.ds_config:
-                model.backward(loss)
+                model.backward(total_loss)
                 model.step()
             else:
                 if args.apex_level > 0:
-                    with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    with amp.scale_loss(total_loss, optimizer) as scaled_loss:
                         scaled_loss.backward()
                     if args.grad_norm > 0:
                         torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.grad_norm)
                 else:
-                    loss.backward()
+                    total_loss.backward()
                     if args.grad_norm > 0:
                         torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_norm)
                 if (j + 1) % args.grad_acc == 0 or j + 1 == le:

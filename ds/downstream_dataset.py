@@ -1,22 +1,7 @@
 import torch
 import pickle
+from util import pad_cut
 from torch.utils.data import Dataset
-
-
-def pad_cut(sequence, length):
-    seq_len = sequence.shape[0]
-    if length > seq_len:
-        padding = torch.zeros(length - seq_len, dtype=sequence.dtype)
-        att = torch.cat([torch.ones_like(sequence), padding])
-        sequence = torch.cat([sequence, padding])
-    else:
-        if sequence.dtype == torch.long:
-            # sequence = torch.cat([sequence[:1], sequence[1 - length:]])
-            sequence = torch.cat([sequence[:length - 1], sequence[-1:]])
-        else:
-            sequence = sequence[:length]
-        att = torch.ones_like(sequence)
-    return sequence, att.to(dtype=torch.long)
 
 
 class DownstreamDataset(Dataset):

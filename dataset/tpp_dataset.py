@@ -1,47 +1,18 @@
 import torch
 import random
-import pickle
 import numpy as np
-from torch.utils.data import Dataset
-from util import pad_cut
+from util import pad_cut, compute_valid_for_tpp
+from dataset_base import ATDataset, DataCollatorForAT
+
 SAMPLE_RATE = 16000
 
 
-def compute_valid(transcript, offset, length, mode, audio_length):
-    sv = [0 for _ in range(length)]
-    ev = [0 for _ in range(length)]
-    start_labels, end_labels = [], []
-    for i, item in enumerate(transcript):
-        sv[offset + item[-4]] = 1
-        ev[offset + item[-3] - 1] = 1
-        sl, el = float(f"{item[-2] / audio_length:.3f}"), float(f"{item[-1] / audio_length:.3f}")
-        if mode:
-            start_labels.append(int(sl * 100))
-            end_labels.append(int(el * 100) - 1)
-        else:
-            start_labels.append(sl)
-            end_labels.append(el)
-    return torch.BoolTensor(sv), torch.BoolTensor(ev), start_labels, end_labels
-
-
-class TPPDataset(Dataset):
+class TPPDataset(ATDataset):
     def __init__(self, datas, num_turns, file_prefix=None):
-        if isinstance(datas, str):
-            with open(datas, "rb") as f:
-                self.datas = pickle.load(f)
-        else:
-            self.datas = datas
-        self.n = len(datas)
-        self.prefix = file_prefix
-        self.num_turns = num_turns
-        self.has_positive = [i for i, d in enumerate(self.datas) if d[-1] >= 0]
-
-    def __len__(self):
-        return len(self.has_positive)
+        super(TPPDataset, self).__init__(datas, num_turns, file_prefix)
 
     def __getitem__(self, idx):
         positive_idx = self.has_positive[idx]  # 0轮
-        # print(f"turns: {self.indexs} device: {torch.distributed.get_rank()} idx: {idx} anchor: {anchor_idx}")
         anchor_idx = self.datas[positive_idx][-1]  # -1轮
         negative_idx_audio = random.randint(0, self.n - 3)
         if negative_idx_audio >= positive_idx:
@@ -67,34 +38,11 @@ class TPPDataset(Dataset):
         return np.load(af), aw, at, np.load(pf), pw, pt, np.load(nf), nw, [0] + history
 
 
-class DataCollatorForTPP:
+class DataCollatorForTPP(DataCollatorForAT):
     def __init__(self, tokenizer, config, fp16=False, mlm_prob=0.15):
+        super(DataCollatorForTPP, self).__init__(tokenizer, config, fp16, mlm_prob)
         self.audio_length = config.audio.max_length
         self.mode = config.fused.num_ends > 1
-        self.tokenizer = tokenizer
-        self.mlm_prob = mlm_prob
-        self.config = config
-        self.fp16 = fp16
-
-    def get_mlm_instance(self, text_input):
-        # text_input: tokenizer.encode之后的word indices列表。
-        labels = text_input.clone()
-        probability_matrix = torch.full(labels.shape, self.mlm_prob)
-        # special_tokens_mask：指定序列中哪些位置是special tokens，这些部分不能被mask。主要是[PAD][CLS][SEP]
-        special_tokens_mask = self.tokenizer.get_special_tokens_mask(labels, already_has_special_tokens=True)
-        special_tokens_mask = torch.tensor(special_tokens_mask, dtype=torch.bool)
-        probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
-        masked_indices = torch.bernoulli(probability_matrix).bool()
-        labels[~masked_indices] = -100  # 使用labels[masked_indices]作为目标，或直接丢给RobertaForMaskedLM
-        # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
-        indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
-        text_input[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
-        # 10% of the time, we replace masked input tokens with random word
-        indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
-        random_words = torch.randint(len(self.tokenizer), labels.shape, dtype=torch.long)
-        text_input[indices_random] = random_words[indices_random]
-        # The rest of the time (10% of the time) we keep the masked input tokens unchanged
-        return text_input, labels
 
     def __call__(self, batch):
         audios, a_mask, masked_text, text_labels, t_mask, start_valid, end_valid, token_type, starts, ends = [], [], [], [], [], [], [], [], [], []
@@ -125,8 +73,8 @@ class DataCollatorForTPP:
                 offset_n = offset_a + at.shape[0]
             p_text, p_tam = pad_cut(positive, ml)
             n_text, n_tam = pad_cut(negative, ml)
-            asv, aev, asl, ael = compute_valid(atr, offset_a, offset_p, self.mode, self.audio_length)
-            psv, pev, psl, pel = compute_valid(ptr, 0, ml - offset_p, self.mode, self.audio_length)
+            asv, aev, asl, ael = compute_valid_for_tpp(atr, offset_a, offset_p, self.mode, self.audio_length)
+            psv, pev, psl, pel = compute_valid_for_tpp(ptr, 0, ml - offset_p, self.mode, self.audio_length)
             sv = torch.cat([asv, psv])
             ev = torch.cat([aev, pev])
             start_valid.append(sv)

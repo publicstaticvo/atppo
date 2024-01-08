@@ -1,11 +1,8 @@
-import os
-import sys
 from torch import nn
 from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
-from tpp.model import ATModelTPP
-from configuration_at import ATConfig
+from models import ATModel, WavLMForMultiTurn, WavLMForMultiModal
+from util import ATConfig
 
 
 class ATForSequenceClassification(PreTrainedModel):
@@ -13,12 +10,9 @@ class ATForSequenceClassification(PreTrainedModel):
     _keys_to_ignore_on_load_missing = ["head"]
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: ATConfig, num_class, ckpt_path=None, *model_args, **model_kwargs):
+    def __init__(self, config: ATConfig, num_class, *model_args, **model_kwargs):
         super(ATForSequenceClassification, self).__init__(config)
-        if ckpt_path:
-            self.model = ATModelTPP.from_pretrained(ckpt_path, config=config, tpp=False)
-        else:
-            self.model = ATModelTPP(config=config, tpp=False)
+        self.model = ATModel(config=config, audio_class=WavLMForMultiTurn if "ic" in config.task else WavLMForMultiModal)
         self.num_class = num_class
         hidden_size = config.text.hidden_size
         self.head = nn.Sequential(nn.Linear(hidden_size, hidden_size), ACT2FN['gelu'], nn.Linear(hidden_size, self.num_class))
@@ -29,7 +23,7 @@ class ATForSequenceClassification(PreTrainedModel):
             self.loss_fct = nn.CrossEntropyLoss()
 
     def forward(self, audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id=None, labels=None):
-        fused_features = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id=turn_id)[:, 0]
+        fused_features, *_ = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id=turn_id)[:, 0]
         logits = self.head(fused_features).squeeze(1)
         if labels is None:
             return logits

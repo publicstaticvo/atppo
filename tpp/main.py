@@ -3,7 +3,6 @@ import sys
 import tqdm
 import json
 import math
-import random
 import argparse
 import deepspeed
 import numpy as np
@@ -12,9 +11,8 @@ import datetime
 print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
-from tpp_trainer import ATForTPP
-from configuration_at import ATConfig
-from tpp_dataloader import TPPDataset, DataCollatorForTPP
+from tpp_trainer import TPPTrainer
+from dataset import TPPDataset, DataCollatorForTPP
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 from transformers import RobertaTokenizerFast, AdamW, get_linear_schedule_with_warmup
@@ -87,17 +85,16 @@ if __name__ == "__main__":
         config.set_length(int(args.audio_length * SAMPLE_RATE), args.text_length)
         config.fused.num_hidden_layers = args.num_fused_layers
         config.fused.num_ends = args.num_ends
-    config.audio.train_mode = 3
     tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
     # 4。读输入数据
     train_data = TPPDataset(args.transcripts, args.num_turns, args.file_prefix)
     # 5。整理config并建立模型
     if args.no_pretrain:
-        model = ATForTPP(config)
+        model = TPPTrainer(config)
     elif args.model_path:
-        model = ATForTPP.from_pretrained(args.model_path, config=config)
+        model = TPPTrainer.from_pretrained(args.model_path, config=config)
     else:
-        model = ATForTPP(config, args.audio_path, args.text_path)
+        model = TPPTrainer(config, args.audio_path, args.text_path)
     # 6。数据并行
     no_decay = ['bias', 'LayerNorm.weight', 'LayerNorm.bias']
     decay = [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)]

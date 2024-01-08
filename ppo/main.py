@@ -10,8 +10,7 @@ print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
 from ppo_trainer import PPOTrainer
-from tpp.tpp_dataloader import TPPDataset
-from ppo_dataloader import DataCollatorForPPO
+from dataset import ATDataset, DataCollatorForPPO
 from transformers import RobertaTokenizerFast
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 
@@ -67,7 +66,7 @@ if __name__ == "__main__":
         torch.cuda.manual_seed_all(args.seed)
     # 3。读输入数据
     tokenizer = RobertaTokenizerFast.from_pretrained(args.tokenizer_path)
-    train_data = TPPDataset(args.transcripts, args.num_turns, args.file_prefix)
+    train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
     args.num_train_steps = args.train_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
     # 4。建立模型
     trainer = PPOTrainer(args)

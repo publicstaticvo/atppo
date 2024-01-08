@@ -1,7 +1,11 @@
 import torch
 import random
-import pickle
 import torch.distributed as dist
+
+from parallel import DDP
+from configuration_at import ATConfig
+from tpp_util import compute_valid_for_tpp
+from word_rm import *
 
 
 def pad(sequence, length):
@@ -26,68 +30,12 @@ def pad_cut(sequence, length, pad_token=0):
     return sequence, att
 
 
-def scale_audio_length(start, end, config):
-    for kernel, stride in zip(config.conv_kernel, config.conv_stride):
-        start = (start - kernel) // stride + 1
-        end = (end - kernel) // stride + 1
-    return [start, end]
-
-
-def group_scale_audio_length(arr, config):
-    for kernel, stride in zip(config.conv_kernel, config.conv_stride):
-        arr = torch.div(arr - kernel, stride, rounding_mode="floor") + 1
-    return arr
-
-
-def compute_valid_for_tpp(transcript, offset, length, mode, audio_length):
-    sv = [0 for _ in range(length)]
-    ev = [0 for _ in range(length)]
-    start_labels, end_labels = [], []
-    for i, item in enumerate(transcript):
-        sv[offset + item[-4]] = 1
-        ev[offset + item[-3] - 1] = 1
-        sl, el = float(f"{item[-2] / audio_length:.3f}"), float(f"{item[-1] / audio_length:.3f}")
-        if mode:
-            start_labels.append(int(sl * 100))
-            end_labels.append(int(el * 100) - 1)
-        else:
-            start_labels.append(sl)
-            end_labels.append(el)
-    return torch.BoolTensor(sv), torch.BoolTensor(ev), start_labels, end_labels
-
-
-def compute_valid_for_rm(sequences, length, pooling_mode):
-    if pooling_mode == "first":
-        valid = [0 for _ in range(length)]
-    else:
-        valid = [[0 for _ in range(length)] for _ in sequences]
-    for i, item in enumerate(sequences):
-        start, end = item
-        if pooling_mode == "first":
-            valid[start] = 1
-        else:
-            for j in range(start, end):
-                valid[i][j] = 1
-    return torch.BoolTensor(valid), len(sequences)
-
-
 def get_rank():
     if not dist.is_available():
         return 0
     if not dist.is_initialized():
         return 0
     return dist.get_rank()
-
-
-def negative_sampling(words, num_negative):
-    words = [x[0][:-1] if x[0][-1] in [',', '.', '?', '!'] and len(x[0]) > 1 else x[0] for x in words]
-    negative_samples = torch.zeros([len(words), len(words)], dtype=torch.bool)
-    for i, x in enumerate(words):
-        idx = [j for j, y in enumerate(words) if y != x]
-        if 0 < num_negative < len(idx):
-            idx = random.sample(idx, num_negative)
-        negative_samples[i, torch.LongTensor(idx)] = True
-    return negative_samples
 
 
 def get_train_ds_config(train_batch_size, num_gpus, grad_acc=1, stage=2, fp16_level=2, offload=False):
@@ -135,3 +83,21 @@ def get_eval_ds_config(train_batch_size, stage=2, fp16_level=2, offload=False):
         "prescale_gradients": False,
         "wall_clock_breakdown": False,
     }
+
+
+__all__ = ['DDP',
+           'dist',
+           'torch',
+           'random',
+           'pad_cut',
+           'ATConfig',
+           'get_rank',
+           'similarity',
+           'negative_sampling',
+           'scale_audio_length',
+           'get_eval_ds_config',
+           'get_train_ds_config',
+           'compute_valid_for_rm',
+           'compute_valid_for_tpp',
+           'group_scale_audio_length'
+           ]

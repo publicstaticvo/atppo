@@ -1,8 +1,7 @@
+import torch
 import random
 import numpy as np
-from tqdm import tqdm
-import torch
-import torch.nn.functional as F
+from torch.nn.functional import cosine_similarity
 from sklearn.metrics import accuracy_score, f1_score
 
 
@@ -28,12 +27,12 @@ def get_cossim(embeddings, centroids):
     utterance_centroids = get_utterance_centroids(embeddings)
     utterance_centroids_flat = utterance_centroids.view(utterance_centroids.shape[0] * utterance_centroids.shape[1], -1)
     embeddings_flat = embeddings.reshape(embeddings.shape[0] * num_utterances, -1)
-    cos_same = F.cosine_similarity(embeddings_flat, utterance_centroids_flat)
+    cos_same = cosine_similarity(embeddings_flat, utterance_centroids_flat)
     centroids_expand = centroids.repeat((num_utterances * embeddings.shape[0], 1))
     embeddings_expand = embeddings_flat.unsqueeze(1).repeat(1, embeddings.shape[0], 1)
     embeddings_expand = embeddings_expand.view(embeddings_expand.shape[0] * embeddings_expand.shape[1],
                                                embeddings_expand.shape[-1])
-    cos_diff = F.cosine_similarity(embeddings_expand, centroids_expand)
+    cos_diff = cosine_similarity(embeddings_expand, centroids_expand)
     cos_diff = cos_diff.view(
         embeddings.size(0),
         num_utterances,
@@ -57,7 +56,7 @@ def get_eer(preds, targets, debug=False):
     N = 4
     M = 50
     avg_EER = 0
-    for _ in tqdm(range(10)):
+    for _ in range(10):
         batch_avg_EER = 0
         for batch_id, _ in enumerate(speaker2embeddings):
             speakers = random.sample(speaker2embeddings.keys(), N)

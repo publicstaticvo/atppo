@@ -1,13 +1,12 @@
 import torch
 from torch import nn
-from tpp.model import ATModelTPP
-from configuration_at import ATConfig
+from util import ATConfig
 from transformers import PreTrainedModel
-from wavlm import WavLMMAMHead, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder
 from transformers.models.roberta.modeling_roberta import RobertaLMHead, RobertaEncoder
+from models import ATModel, WavLMMAMHead, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder
 
 
-class ATForTPP(PreTrainedModel):
+class TPPTrainer(PreTrainedModel):
     config_class = ATConfig
     _keys_to_ignore_on_load_missing = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head"]
     supports_gradient_checkpointing = True
@@ -17,10 +16,10 @@ class ATForTPP(PreTrainedModel):
             module.gradient_checkpointing = value
 
     def __init__(self, config: ATConfig, audio=None, text=None, *args, **kwargs):
-        super(ATForTPP, self).__init__(config)
+        super(TPPTrainer, self).__init__(config)
         self.hidden_size = config.text.hidden_size
         self.num_ends = config.fused.num_ends
-        self.model = ATModelTPP(config, audio, text)
+        self.model = ATModel(config, audio=audio, text=text)
         self.mlm_head = RobertaLMHead(config.text)
         self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
         self.selection_head = nn.Linear(self.hidden_size, 4)

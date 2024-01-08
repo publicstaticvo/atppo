@@ -7,18 +7,17 @@ from torch.nn.functional import normalize
 from transformers import get_linear_schedule_with_warmup
 
 from util import *
-from parallel import DDP
 from tpp.tpp_trainer import ATForTPP
-from rm.rm_trainer import ATRewardModel
+from models import ATRewardWord
 SAMPLE_RATE = 1600
 
 
-def step(loss, model, args, mode, optimizer=None, scheduler=None):
-    if mode == "ds":
+def step(loss, model, args, optimizer=None, scheduler=None):
+    if args.ds_config:
         model.backward(loss)
         model.step()
     else:
-        if "amp" in mode:
+        if args.apex_level > 0:
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
             if args.grad_norm > 0:
@@ -33,54 +32,6 @@ def step(loss, model, args, mode, optimizer=None, scheduler=None):
             optimizer.zero_grad()
 
 
-def construct_mean_map(d):
-    a = torch.arange(d)
-    a = a[None, :] + 1 - a[:, None]
-    return torch.clamp_min(a, 1).unsqueeze(-1)
-
-
-def split_audio_features(audio, audio_attention_mask):
-    bs = audio_attention_mask.shape[0] // 2
-    audio_attention_mask_sum = torch.clamp_max(audio_attention_mask.view(bs, 2, -1).sum(-1).div(SAMPLE_RATE, rounding_mode='trunc'), 99)
-    audio_attention_mask_sum[:, 0] += 1
-    audio_attention_mask_sum[:, 1] += (audio_attention_mask_sum[:, 0] + 1)
-    audio_attention_mask_sum = audio_attention_mask_sum.long().tolist()
-    # print(f"{torch.distributed.get_rank()}, {audio_attention_mask.shape}, {audio_attention_mask.sum(-1)}, {audio.shape}, {audio_attention_mask_sum}")
-    audio_features = []
-    for i in range(bs):
-        audio_features.append(audio[i, 1:audio_attention_mask_sum[i][0]])
-        audio_features.append(audio[i, audio_attention_mask_sum[i][0]+1:audio_attention_mask_sum[i][1]])
-    return audio_features
-
-
-def split_text_words(text, split_mark):
-    text_words = []
-    for t, m in zip(text, split_mark):
-        text_words.append(t[:m])
-        text_words.append(t[m:])
-    return text_words
-
-
-def precompute_max_sim(s):
-    # Precompute the maximum of s(l, i, j) for all i, j and every possible k ≤ l ≤ i
-    m, n = s.shape[-2:]
-    max_s = torch.zeros_like(s).tolist()
-    argmax_s = torch.zeros_like(s).tolist()
-    s = s.tolist()
-    for j in range(n):
-        for i in range(m):
-            max_s[0][i][j] = s[0][i][j]
-            argmax_s[0][i][j] = 0
-            for k in range(1, i + 1):
-                if max_s[k-1][i][j] < s[k][i][j]:
-                    max_s[k][i][j] = s[k][i][j]
-                    argmax_s[k][i][j] = k
-                else:
-                    max_s[k][i][j] = max_s[k-1][i][j]
-                    argmax_s[k][i][j] = k - 1
-    return s, max_s, argmax_s
-
-
 class PPOTrainer:
 
     def __init__(self, args):
@@ -88,7 +39,7 @@ class PPOTrainer:
         self.actor, self.actor_config, self.actor_mode, self.actor_optim, self.actor_scheduler = self.init_trainable(args, ATForTPP, args.actor_path, args.actor_lr)
         self.ref, _ = self.init_ref(args, ATForTPP, args.actor_path)
         # self.critic, self.critic_optim, self.critic_scheduler = self.init_trainable(args, ATRewardModel, args.reward_path)
-        self.reward, self.reward_config = self.init_ref(args, ATRewardModel, args.reward_path)
+        self.reward, self.reward_config = self.init_ref(args, ATRewardWord, args.reward_path)
         
         self.args = args
         self.perform_mlm = True
@@ -107,55 +58,6 @@ class PPOTrainer:
         if self.args.num_ends == 1:
             return torch.mean(torch.pow(actor - ref, 2))
         return torch.mean(actor * torch.log(actor / torch.clamp_min(ref, eps)))
-
-    def compute_alignment(self, audio, text, audio_mask, text_mask, turn_id, text_valid, split_marks):
-        audio_features, text_words = self.reward.forward_features_for_ppo(audio, text, audio_mask, text_mask, turn_id, text_valid=text_valid)
-        audio_features = split_audio_features(audio_features, audio_mask)
-        text_words = split_text_words(text_words, split_marks)  # audio和text均为2B个
-        tpp_starts, tpp_ends = [], []  # 一个batch内部所有label打成一个1D数组
-        for a, t in zip(audio_features, text_words):
-            # a: M*H t: N*H
-            m = a.shape[0]
-            n = t.shape[0]
-            a = a.unsqueeze(1).repeat(1, m, 1).permute(2, 0, 1).triu().permute(1, 2, 0) / self.mean_map.to(audio.device)[:m, :m, :]
-            sim = torch.einsum("ijk,lk->ijl", normalize(a), normalize(t))  # M*M*N
-            sim, max_sim, argmax_sim = precompute_max_sim(sim)
-            # 动态规划
-            obj = [[float("-inf") for _ in range(n)] for _ in range(m)]
-            starts = [[0 for _ in range(n)] for _ in range(m)]  # 每次被选中的argmax_sim，由end_labels[i]指向start_labels[i]
-            ends = [[0 for _ in range(n)] for _ in range(m)]  # 由end_labels[i]指向end_labels[i-1]
-            for j in range(n):  # 前j个词
-                for i in range(m):  # 前i个语音token
-                    if j == 0:
-                        obj[i][j] = sim[0][i][j]
-                        starts[i][j] = 0
-                        ends[i][j] = -1
-                    else:
-                        for k in range(i):
-                            if obj[k][j-1] + max_sim[k][i][j] > obj[i][j]:
-                                obj[i][j] = obj[k][j-1] + max_sim[k][i][j]
-                                starts[i][j] = argmax_sim[k][i][j]
-                                ends[i][j] = k
-            # 最大匹配值
-            mm, argmax = float("-inf"), -1
-            for i, o in enumerate(obj):
-                if mm < o[-1]:
-                    mm = o[-1]
-                    argmax = i
-            # 回溯路径
-            s, e = [], [argmax]
-            for j in range(n - 1, -1, -1):
-                if j > 0:
-                    e.append(ends[e[-1]][j])
-                s.append(starts[e[-1]][j])
-            tpp_starts.extend(s[::-1])
-            tpp_ends.extend(e[::-1])
-
-        if self.args.num_ends == 1:
-            tpp_starts = (torch.tensor(tpp_starts, device=audio.device) / 100).to(dtype=audio.dtype)
-            tpp_ends = (torch.tensor(tpp_ends, device=audio.device) / 100).to(dtype=audio.dtype)
-            return tpp_starts, tpp_ends
-        return torch.LongTensor(tpp_starts), torch.LongTensor(tpp_ends)
 
     def valid_filter(self, outputs, valid, pooling_mode):
         words = valid.shape[0]
