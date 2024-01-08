@@ -1,7 +1,6 @@
 .idea
 .DS_Store
 logs
-models
 saved_models
 __pycache__
 *.log
