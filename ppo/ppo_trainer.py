@@ -8,38 +8,17 @@ from transformers import get_linear_schedule_with_warmup
 
 from util import *
 from tpp.tpp_trainer import ATForTPP
-from models import ATRewardWord
+from models import ATModelForWordAlign, ATModelForSentenceAlign
 SAMPLE_RATE = 1600
-
-
-def step(loss, model, args, optimizer=None, scheduler=None):
-    if args.ds_config:
-        model.backward(loss)
-        model.step()
-    else:
-        if args.apex_level > 0:
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
-            if args.grad_norm > 0:
-                torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.grad_norm)
-        else:
-            loss.backward()
-            if args.grad_norm > 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_norm)
-        if model.step_count % args.grad_acc == 0:
-            optimizer.step()
-            scheduler.step()
-            optimizer.zero_grad()
 
 
 class PPOTrainer:
 
     def __init__(self, args):
-        # super(PPOTrainer, self).__init__()
-        self.actor, self.actor_config, self.actor_mode, self.actor_optim, self.actor_scheduler = self.init_trainable(args, ATForTPP, args.actor_path, args.actor_lr)
+        self.actor, self.actor_config, self.actor_optim, self.actor_scheduler = self.init_trainable(args, ATForTPP, args.actor_path, args.actor_lr)
         self.ref, _ = self.init_ref(args, ATForTPP, args.actor_path)
-        # self.critic, self.critic_optim, self.critic_scheduler = self.init_trainable(args, ATRewardModel, args.reward_path)
-        self.reward, self.reward_config = self.init_ref(args, ATRewardWord, args.reward_path)
+        self.critic, self.critic_config, self.critic_optim, self.critic_scheduler = self.init_trainable(args, ATModelForWordAlign, args.critic_path, args.critic_lr)
+        self.reward, self.reward_config = self.init_ref(args, ATModelForSentenceAlign, args.reward_path)
         
         self.args = args
         self.perform_mlm = True
@@ -52,7 +31,6 @@ class PPOTrainer:
         self.gamma = 1.0
         self.lam = 0.95
         self.experience_count = 0
-        self.mean_map = construct_mean_map(200).half()
 
     def kl(self, actor, ref, eps=1e-4):
         if self.args.num_ends == 1:
@@ -70,15 +48,8 @@ class PPOTrainer:
             return torch.sum(temp, dim=1) / torch.sum(valid, dim=1, keepdim=True)
 
     def train_ppo(self, audio_input, audio_mask, full_text, text_input, text_mask, mlm_label=None, turn_id=None, start_valid=None, end_valid=None, splits=None):
-        # 1 标注
-        with torch.no_grad():
-            bs, text_len = mlm_label.shape
-            positive_audio_input = audio_input.view(bs, 3, -1)[:, :2].contiguous().view(bs * 2, -1)
-            positive_audio_mask = audio_mask.view(bs, 3, -1)[:, :2].contiguous().view(bs * 2, -1)
-            positive_text_mask = text_mask.view(bs, 2, -1)[:, 0]
-            positive_turn_id = turn_id.view(bs, 2, -1)[:, 0]
-            tpp_starts, tpp_ends = self.compute_alignment(positive_audio_input, full_text, positive_audio_mask, positive_text_mask, positive_turn_id, start_valid, splits)
-        # 2 求偏差，actor step
+        # 1 进行预测，获得actor预测结果和ref预测结果，获得rewards
+        bs, text_len = mlm_label.shape
         fused_features, mam_label, a_masked = self.actor.model(audio_input, text_input, audio_mask, text_mask, turn_id, self.perform_mlm)
         fused_features = fused_features.view(bs, 4, -1, self.hidden_size)
         text_fused = fused_features[:, 0, :text_len]
@@ -91,7 +62,10 @@ class PPOTrainer:
             pred_ref = self.ref.tpp_loss(text_fused, start_valid, end_valid)
         kl = self.kl(pred_actor, pred_ref)
         loss = mlm + mam + rs_loss + span_loss * 3 + self.kl_ctl * kl
-        step(loss, self.actor, self.args, self.actor_mode, self.actor_optim, self.actor_scheduler)
+        step(loss, self.actor, self.args, self.actor_optim, self.actor_scheduler)
+        # 2 求得R值
+        # 3 actor step
+        # 4 critic step
         return mlm, mam, rs_loss, span_loss, kl, loss
 
     def init_trainable(self, args, model_class, model_name, lr):
@@ -118,22 +92,18 @@ class PPOTrainer:
         # 4 parallel
         if args.ds_config:
             model, optimizer, _, scheduler = deepspeed.initialize(model=model, optimizer=optimizer, config=args.ds_config, lr_scheduler=scheduler, dist_init_required=True)
-            model_mode = "ds"
         else:
             model.to(args.device)
-            model_mode = ""
             if args.apex_level > 0:
                 model, optimizer = amp.initialize(model, optimizer, opt_level=f"O{args.apex_level}", keep_batchnorm_fp32=False if args.apex_level >= 2 else None, loss_scale="dynamic" if args.loss_scale == 0. else args.loss_scale)
-                model_mode = "amp"
             if args.local_rank >= 0:
                 model = DDP(model, find_unused_parameters=True, device_ids=[args.local_rank], output_device=[args.local_rank])
-                model_mode += "ddp"
-        return model, config, model_mode, optimizer, scheduler
+        return model, config, optimizer, scheduler
 
     def init_ref(self, args, model_class, model_name):
         # 1 ds config
         if args.ds_config:
-            args.ds_config = get_eval_ds_config(args.batch_size, args.ds_stage, args.apex_level)
+            args.ds_config = get_eval_ds_config(args.batch_size, 0, args.apex_level)
         # 2 model
         model = model_class.from_pretrained(model_name)
         config = model.config

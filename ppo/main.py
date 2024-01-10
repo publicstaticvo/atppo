@@ -27,6 +27,8 @@ if __name__ == "__main__":
     parser.add_argument("--apex_level", default=0, type=int)
     parser.add_argument("--audio_length", default=10, type=float)
     parser.add_argument("--batch_size", default=256, type=int)
+    parser.add_argument("--critic_lr", default=1e-5, type=float)
+    parser.add_argument("--critic_path", default=None, type=str, required=True)
     parser.add_argument("--dont_show", action='store_true')
     parser.add_argument("--ds_config", default=None, type=str)
     parser.add_argument("--ds_stage", default=3, type=int)

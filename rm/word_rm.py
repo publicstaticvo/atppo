@@ -32,7 +32,5 @@ class WordAlignTrainer(AlignTrainer):
         else:
             text_features = features[:, :text_input.shape[1]]
             audio_features = features[:, text_input.shape[1]:]
-        # print(x.shape for x in audio_valid)
-        # print(audio_features.shape, features.shape)
         rm_loss = self.reward_loss(audio_features, text_features, audio_valid, text_valid, neg)
         return rm_loss

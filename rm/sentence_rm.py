@@ -7,8 +7,7 @@ from models import ATModelForSentenceAlign
 class SentenceAlignTrainer(AlignTrainer):
 
     def __init__(self, config: ATConfig, audio=None, text=None, bias=False, maximum_reward=5):
-        super(SentenceAlignTrainer, self).__init__(config, ATModelForSentenceAlign, audio, text)
-        self.reward_head = torch.nn.Linear(self.hidden_size, 1, bias=bias)
+        super(SentenceAlignTrainer, self).__init__(config, ATModelForSentenceAlign, audio, text, bias=bias)
         self.M = maximum_reward
 
     def reward_loss(self, scores, eps=1e-3):
@@ -18,8 +17,6 @@ class SentenceAlignTrainer(AlignTrainer):
         return -(scores[:, :-1] / scores_cumsum.clamp_min(eps)).log().mean()
 
     def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id):
-        fused_features = self.model(audio_input, text_input, audio_mask, text_mask, turn_id)[:, 0]
-        # fused_features: (N+1)B * 768
-        scores = self.reward_head(fused_features).unsqueeze(-1)  # (N+1)B
+        scores = self.model(audio_input, text_input, audio_mask, text_mask, turn_id)[:, 0]
         pro_loss = self.reward_loss(scores)
         return pro_loss

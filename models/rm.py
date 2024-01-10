@@ -11,8 +11,9 @@ class ATModelForWordAlign(ATModel):
 
 class ATModelForSentenceAlign(ATModel):
 
-    def __init__(self, config: ATConfig, audio=None, text=None):
+    def __init__(self, config: ATConfig, audio=None, text=None, bias=False):
         super(ATModelForSentenceAlign, self).__init__(config, WavLMForMultiTurn, audio, text)
+        self.reward_head = torch.nn.Linear(self.hidden_size, 1, bias=bias)
         self.num_items_per_sample = config.num_negative + 1
 
     def get_fused_input(self, audio_features, audio_mask, text_features, text_mask):
@@ -34,4 +35,6 @@ class ATModelForSentenceAlign(ATModel):
         # text_features: B * L * 768
         fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_mask)
         fused_input = self.fused_encoder(fused_input, fused_attention_mask).last_hidden_state
-        return fused_input
+        # fused_features: (N+1)B * 768
+        scores = self.reward_head(fused_input).unsqueeze(-1)  # (N+1)B
+        return scores

@@ -9,10 +9,10 @@ class AlignTrainer(PreTrainedModel):
     config_class = ATConfig
     _keys_to_ignore_on_load_unexpected = [r"fused_encoder"]
 
-    def __init__(self, config: ATConfig, model_class, audio=None, text=None):
+    def __init__(self, config: ATConfig, model_class, audio=None, text=None, *args, **kwargs):
         super(AlignTrainer, self).__init__(config)
         self.hidden_size = config.text.hidden_size
-        self.model = model_class(config, audio, text)
+        self.model = model_class(config, audio, text, *args, **kwargs)
         if hasattr(config, "perform_mlm"):
             self.num_negative = config.num_negative
             self.perform_mlm = config.perform_mlm

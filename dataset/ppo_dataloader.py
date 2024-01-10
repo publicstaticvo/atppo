@@ -65,5 +65,4 @@ class DataCollatorForPPO(DataCollatorForAT):
             lambda x: torch.stack(x, dim=0),
             [audios, a_mask, text, masked_text, text_labels, t_mask, token_type]
         )
-        # split_marks = torch.LongTensor(split_marks)
         return audios, a_mask, text, masked_text, text_labels, t_mask, start_valid, end_valid, token_type, split_marks

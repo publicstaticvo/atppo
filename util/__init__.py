@@ -2,6 +2,7 @@ import torch
 import random
 import torch.distributed as dist
 
+from .ppo import step
 from .parallel import DDP
 from .configuration_at import ATConfig
 from .tpp_util import compute_valid_for_tpp
@@ -87,6 +88,7 @@ def get_eval_ds_config(train_batch_size, stage=2, fp16_level=2, offload=False):
 
 __all__ = ['DDP',
            'dist',
+           'step',
            'torch',
            'random',
            'pad_cut',
