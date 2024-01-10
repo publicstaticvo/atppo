@@ -1,10 +1,10 @@
 from util import *
-from dataset_base import DataCollatorForAT
+from .dataset_base import DataCollatorForAT
 
 
 class DataCollatorForWordRM(DataCollatorForAT):
-    def __init__(self, tokenizer, config, fp16=False, mlm_prob=0.15):
-        super(DataCollatorForWordRM, self).__init__(tokenizer, config, fp16, mlm_prob)
+    def __init__(self, tokenizer, config, fp16=False):
+        super(DataCollatorForWordRM, self).__init__(tokenizer, config, fp16, 0)
         self.num_negative = config.num_negative
 
     def __call__(self, batch):
@@ -27,9 +27,6 @@ class DataCollatorForWordRM(DataCollatorForAT):
                 offset_a = len(history) - 1
                 offset_p = offset_a + len(at) - 1
             text, tam = pad_cut(text, ml)
-            if self.config.perform_mlm:
-                text, mlm_label = self.get_mlm_instance(text)
-                labels.append(mlm_label)
 
             text_marks = []
             anchor_audio_marks = []
@@ -72,6 +69,4 @@ class DataCollatorForWordRM(DataCollatorForAT):
             t_valid.append(text_valid)
             turn_id.append(torch.cat([torch.zeros(offset_p + 1), torch.ones(ml - offset_p - 1)]).long())
         audios, a_mask, texts, t_mask, turn_id = map(lambda t: torch.stack(t, dim=0), [audios, a_mask, texts, t_mask, turn_id])
-        if labels: labels = torch.stack(labels, dim=0)
-        else: labels = None
-        return audios, a_mask, a_valid, texts, t_mask, t_valid, turn_id, negative_indices, labels
+        return audios, a_mask, a_valid, texts, t_mask, t_valid, turn_id, negative_indices

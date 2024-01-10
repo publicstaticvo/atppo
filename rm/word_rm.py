@@ -1,14 +1,14 @@
 import torch
-from models import ATModel
 from rm_trainer import AlignTrainer
 from util import ATConfig, similarity
+from models import ATModelForWordAlign
 
 
 class WordAlignTrainer(AlignTrainer):
 
     def __init__(self, config: ATConfig, audio=None, text=None):
-        config.fused.num_hidden_layers = 0
-        super(WordAlignTrainer, self).__init__(config, ATModel, audio, text)
+        # config.fused.num_hidden_layers = 0
+        super(WordAlignTrainer, self).__init__(config, ATModelForWordAlign, audio, text)
 
     def reward_loss(self, audio, text, audio_valid, text_valid, negative_indices=None):
         bs = audio.shape[0]
@@ -25,12 +25,14 @@ class WordAlignTrainer(AlignTrainer):
             losses += loss
         return losses / bs
 
-    def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id=None, audio_valid=None, text_valid=None, neg=None, mlm_label=None):
-        features, mam_label, a_masked = self.model(audio_input, text_input, audio_mask, text_mask, turn_id, self.perform_mlm)
-        audio_features, _, text_features = features
+    def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id=None, audio_valid=None, text_valid=None, neg=None):
+        features, mam_label, a_masked = self.model(audio_input, text_input, audio_mask, text_mask, turn_id)
+        if isinstance(features, tuple):
+            audio_features, _, text_features = features
+        else:
+            text_features = features[:, :text_input.shape[1]]
+            audio_features = features[:, text_input.shape[1]:]
+        # print(x.shape for x in audio_valid)
+        # print(audio_features.shape, features.shape)
         rm_loss = self.reward_loss(audio_features, text_features, audio_valid, text_valid, neg)
-        if self.perform_mlm:
-            mlm = self.mlm_loss(text_features, mlm_label)
-            mam = self.mam_loss(audio_features, mam_label, a_masked)
-            return mlm, mam, rm_loss
-        return 0, 0, rm_loss
+        return rm_loss

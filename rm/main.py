@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.
 from util import *
 from word_rm import WordAlignTrainer
 from sentence_rm import SentenceAlignTrainer
-from dataset import ATDataset, SentenceAlignDataset, DataCollatorForSentenceRM
+from dataset import ATDataset, SentenceAlignDataset, DataCollatorForWordRM, DataCollatorForSentenceRM
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 from transformers import RobertaTokenizerFast, AdamW, get_linear_schedule_with_warmup
@@ -25,14 +25,11 @@ os.environ["NCCL_DEBUG"] = "WARN"
 
 
 def train_step_word(rm_model, b):
-    a_input, a_mask, a_valid, t_input, t_mask, t_valid, turn_id, neg, mlm_labels = b
+    a_input, a_mask, a_valid, t_input, t_mask, t_valid, turn_id, neg = b
     a_input, a_mask, t_input, t_mask, turn_id = map(lambda x: x.to(args.device), [a_input, a_mask, t_input, t_mask, turn_id])
     a_valid, t_valid, neg = map(lambda x: [t.to(args.device) for t in x], [a_valid, t_valid, neg])
-    if mlm_labels is not None:
-        mlm_labels.to(args.device)
-    mlm, mam, rm = rm_model(a_input, t_input, a_mask, t_mask, turn_id, a_valid, t_valid, neg, mlm_labels)
-    loss = mlm + mam + rm
-    return loss, rm
+    rm = rm_model(a_input, t_input, a_mask, t_mask, turn_id, a_valid, t_valid, neg)
+    return rm
 
 
 def train_step_sentence(rm_model, b):
@@ -112,9 +109,11 @@ if __name__ == "__main__":
     if args.align_mode == "word":
         model_class = WordAlignTrainer
         train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
+        c = DataCollatorForWordRM(tokenizer, config, args.apex_level > 0)
     else:
         model_class = SentenceAlignTrainer
         train_data = SentenceAlignDataset(args.transcripts, args.num_turns, args.file_prefix)
+        c = DataCollatorForSentenceRM(tokenizer, config, train_data, args.apex_level > 0)
     if args.model_path:
         model = model_class.from_pretrained(args.model_path, config=config)
     else:
@@ -133,7 +132,6 @@ if __name__ == "__main__":
         optimizer = AdamW(ogp, lr=args.lr, eps=1e-8)
     warmup_steps = int(args.warmup * num_train_steps)
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_train_steps)
-    c = DataCollatorForSentenceRM(tokenizer, config, args.apex_level > 0)
     if args.ds_config:
         model, optimizer, _, scheduler = deepspeed.initialize(model=model, optimizer=optimizer, config=args.ds_config, lr_scheduler=scheduler, dist_init_required=True)
     else:
@@ -156,13 +154,12 @@ if __name__ == "__main__":
         le = len(inner_it)
         if isinstance(train_loader.sampler, DistributedSampler):
             train_loader.sampler.set_epoch(i)
-        losses = [0, 0]
+        losses = 0
         for j, batch in enumerate(inner_it):
-            total_loss, rm_loss = train_step_word(model, batch)
-            losses[0] += float(total_loss)
-            losses[1] += float(rm_loss)
+            total_loss = train_step_word(model, batch) if args.align_mode == "word" else train_step_sentence(model, batch)
+            losses += float(total_loss)
             if not args.dont_show and get_rank() == 0:
-                inner_it.set_postfix_str(f"loss: {total_loss:.4f}|rm: {rm_loss:.4f}")
+                inner_it.set_postfix_str(f"loss: {total_loss:.4f}")
             total_loss = total_loss / args.grad_acc
             if args.ds_config:
                 model.backward(total_loss)
@@ -188,4 +185,4 @@ if __name__ == "__main__":
                 temp = temp.module
             temp.save_pretrained(save_path)
         if get_rank() == 0:
-            outer_it.set_postfix_str(f"loss: {losses[0] / le:.4f}|rm:{losses[1] / le:.4f}")
+            outer_it.set_postfix_str(f"loss: {losses / le:.4f}")

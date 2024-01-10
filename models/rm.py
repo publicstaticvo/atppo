@@ -1,6 +1,12 @@
 from util import *
-from modeling_at import ATModel
-from wavlm import WavLMForMultiTurn
+from .modeling_at import ATModel
+from .wavlm import WavLMForMultiTurn
+
+
+class ATModelForWordAlign(ATModel):
+
+    def __init__(self, config: ATConfig, audio=None, text=None):
+        super(ATModelForWordAlign, self).__init__(config, WavLMForMultiTurn, audio, text)
 
 
 class ATModelForSentenceAlign(ATModel):
@@ -11,7 +17,7 @@ class ATModelForSentenceAlign(ATModel):
 
     def get_fused_input(self, audio_features, audio_mask, text_features, text_mask):
         bs, text_len = text_features.shape[:2]
-        token_type_ids = torch.zeros([bs, text_len + audio_features.shape[1]], dtype=torch.long).to(text_features.device)
+        token_type_ids = torch.zeros([bs * self.num_items_per_sample, text_len + audio_features.shape[1]], dtype=torch.long).to(text_features.device)
         token_type_ids[:, text_len:] = 1
         text_features = text_features.unsqueeze(1).repeat(1, self.num_items_per_sample, 1, 1).view(bs * self.num_items_per_sample, text_len, self.hidden_size)
         fused_input = torch.cat([text_features, audio_features], dim=1) + self.token_type_embeddings(token_type_ids)

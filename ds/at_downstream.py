@@ -10,9 +10,9 @@ class ATForSequenceClassification(PreTrainedModel):
     _keys_to_ignore_on_load_missing = ["head"]
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: ATConfig, num_class, *model_args, **model_kwargs):
+    def __init__(self, config: ATConfig, task, num_class, *model_args, **model_kwargs):
         super(ATForSequenceClassification, self).__init__(config)
-        self.model = ATModel(config=config, audio_class=WavLMForMultiTurn if "ic" in config.task else WavLMForMultiModal)
+        self.model = ATModel(config=config, audio_class=WavLMForMultiTurn if "ic" in task else WavLMForMultiModal)
         self.num_class = num_class
         hidden_size = config.text.hidden_size
         self.head = nn.Sequential(nn.Linear(hidden_size, hidden_size), ACT2FN['gelu'], nn.Linear(hidden_size, self.num_class))
@@ -23,8 +23,8 @@ class ATForSequenceClassification(PreTrainedModel):
             self.loss_fct = nn.CrossEntropyLoss()
 
     def forward(self, audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id=None, labels=None):
-        fused_features, *_ = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id=turn_id)[:, 0]
-        logits = self.head(fused_features).squeeze(1)
+        fused_features, *_ = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id=turn_id)
+        logits = self.head(fused_features[:, 0]).squeeze(1)
         if labels is None:
             return logits
         loss = self.loss_fct(logits, labels.to(dtype=logits.dtype) if self.num_class == 1 else labels)

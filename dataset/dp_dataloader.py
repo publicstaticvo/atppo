@@ -1,5 +1,5 @@
 import torch
-from dataset_base import DataCollatorForAT
+from .dataset_base import DataCollatorForAT
 from util import pad_cut, compute_valid_for_tpp
 SAMPLE_RATE = 16000
 

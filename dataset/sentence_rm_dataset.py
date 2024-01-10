@@ -1,5 +1,6 @@
+import numpy as np
 from util import *
-from dataset_base import ATDataset, DataCollatorForAT
+from .dataset_base import ATDataset, DataCollatorForAT
 
 
 class SentenceAlignDataset(ATDataset):
@@ -8,25 +9,25 @@ class SentenceAlignDataset(ATDataset):
         super(SentenceAlignDataset, self).__init__(datas, num_turns, file_prefix)
 
     def negative_sampling_step(self, audio, start, end):
-        if audio.shape[0] >= 80000 and random.random() < 0.6:
+        if audio.shape[0] > 81600 and random.random() < 0.7:
             new_start = random.randint(0, audio.shape[0] - end + start - 1600)
             if start <= new_start <= start + 1600:
                 new_start += 1600
             new_end = new_start + end - start
-            new_audio = audio[:start] + audio[new_start:new_end] + audio[end:]
+            new_audio = torch.cat([audio[:start], audio[new_start:new_end], audio[end:]])
             align_score = min(1, abs(new_start - start) / 10000)
             return new_audio, align_score
-        replace_audio = random.choice(self.datas)
+        replace_audio = torch.from_numpy(np.load(random.choice(self.datas)[0])).to(dtype=audio.dtype)
         while replace_audio.shape[0] < end - start + 40000:
-            replace_audio = random.choice(self.datas)
+            replace_audio = torch.from_numpy(np.load(random.choice(self.datas)[0])).to(dtype=audio.dtype)
         new_start = random.randint(0, replace_audio.shape[0] - end + start)
         new_end = new_start + end - start
-        new_audio = audio[:start] + replace_audio[new_start:new_end] + audio[end:]
+        new_audio = torch.cat([audio[:start], replace_audio[new_start:new_end], audio[end:]])
         return new_audio, 1
 
     def negative_sampling(self, history, query, history_transcript, query_transcript):
         num_steps = random.randint(1, len(history_transcript) + len(query_transcript))
-        num_history_steps = num_steps * len(history) // (len(history) + len(query))
+        num_history_steps = max(min(num_steps * len(history) // (len(history) + len(query)), len(history_transcript)), num_steps - len(query_transcript))
         num_query_steps = num_steps - num_history_steps
         total_score = 0
         for tr in random.sample(history_transcript, num_history_steps):
@@ -76,6 +77,7 @@ class DataCollatorForSentenceRM(DataCollatorForAT):
                 a_mask.extend([am, pm])
             texts.append(text)
             t_mask.append(tam)
-            turn_id.append(torch.cat([torch.zeros(offset_p + 1), torch.ones(ml - offset_p - 1)]).long())
+            tid = torch.cat([torch.zeros(offset_p + 1), torch.ones(ml - offset_p - 1)]).long()
+            turn_id.append(tid)
         audios, a_mask, texts, t_mask, turn_id = map(lambda t: torch.stack(t, dim=0), [audios, a_mask, texts, t_mask, turn_id])
         return audios, a_mask, texts, t_mask, turn_id

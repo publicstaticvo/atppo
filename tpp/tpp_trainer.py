@@ -3,7 +3,7 @@ from torch import nn
 from util import ATConfig
 from transformers import PreTrainedModel
 from transformers.models.roberta.modeling_roberta import RobertaLMHead, RobertaEncoder
-from models import ATModel, WavLMMAMHead, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder
+from models import ATForTPP, WavLMMAMHead, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder
 
 
 class TPPTrainer(PreTrainedModel):
@@ -19,7 +19,7 @@ class TPPTrainer(PreTrainedModel):
         super(TPPTrainer, self).__init__(config)
         self.hidden_size = config.text.hidden_size
         self.num_ends = config.fused.num_ends
-        self.model = ATModel(config, audio=audio, text=text)
+        self.model = ATForTPP(config, audio=audio, text=text)
         self.mlm_head = RobertaLMHead(config.text)
         self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
         self.selection_head = nn.Linear(self.hidden_size, 4)
@@ -55,7 +55,7 @@ class TPPTrainer(PreTrainedModel):
         mam_pre = self.mam_head(audio)
         mam_loss = torch.tensor(0.0, device=audio.device)
         if torch.sum(masked_indices[1]) != 0:
-            mam_loss = self.l1(mam_pre.masked_select(masked_indices[0]), label.masked_select(masked_indices[1]))
+            mam_loss = self.l1(mam_pre.masked_select(masked_indices[0].unsqueeze(-1)), label.masked_select(masked_indices[1]))
         return mam_loss
 
     def response_selection(self, fused_input, batch_size):

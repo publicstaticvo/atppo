@@ -6,14 +6,16 @@ from models import ATModelForSentenceAlign
 
 class SentenceAlignTrainer(AlignTrainer):
 
-    def __init__(self, config: ATConfig, audio=None, text=None, bias=False):
+    def __init__(self, config: ATConfig, audio=None, text=None, bias=False, maximum_reward=5):
         super(SentenceAlignTrainer, self).__init__(config, ATModelForSentenceAlign, audio, text)
         self.reward_head = torch.nn.Linear(self.hidden_size, 1, bias=bias)
+        self.M = maximum_reward
 
     def reward_loss(self, scores, eps=1e-3):
-        scores = scores.exp().view(-1, self.model.num_items_per_sample)
+        # 除此之外还可以.sigmoid()
+        scores = scores.clamp(-self.M, self.M).exp().view(-1, self.model.num_items_per_sample)
         scores_cumsum = scores.flip([-1]).cumsum(-1).flip([-1])[:, :-1]
-        return (scores[:, :-1] / scores_cumsum.clamp_min(eps)).log().mean()
+        return -(scores[:, :-1] / scores_cumsum.clamp_min(eps)).log().mean()
 
     def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id):
         fused_features = self.model(audio_input, text_input, audio_mask, text_mask, turn_id)[:, 0]

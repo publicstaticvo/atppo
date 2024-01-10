@@ -1,4 +1,5 @@
 python /mnt/ewwe/yts/at/atppo/rm/main.py \
+    --align_mode=sent \
     --apex_level=2 \
     --audio_length=10 \
     --batch_size=24 \

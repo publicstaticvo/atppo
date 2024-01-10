@@ -2,7 +2,7 @@ import torch
 import random
 import numpy as np
 from util import pad_cut, compute_valid_for_tpp
-from dataset_base import ATDataset, DataCollatorForAT
+from .dataset_base import ATDataset, DataCollatorForAT
 
 SAMPLE_RATE = 16000
 

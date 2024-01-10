@@ -2,10 +2,10 @@ import torch
 import random
 import torch.distributed as dist
 
-from parallel import DDP
-from configuration_at import ATConfig
-from tpp_util import compute_valid_for_tpp
-from word_rm import *
+from .parallel import DDP
+from .configuration_at import ATConfig
+from .tpp_util import compute_valid_for_tpp
+from .word_rm import *
 
 
 def pad(sequence, length):

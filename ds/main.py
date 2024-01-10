@@ -7,8 +7,6 @@ import argparse
 import numpy as np
 from apex import amp
 from apex.optimizers import FusedAdam
-from at_downstream import ATForSequenceClassification
-from downstream_dataset import DownstreamDataset, DataCollatorForDownstream
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 from transformers import RobertaTokenizerFast, get_linear_schedule_with_warmup
 from downstream_metrics import downstream_metrics
@@ -16,6 +14,8 @@ from sklearn.metrics import accuracy_score
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
+from at_downstream import ATForSequenceClassification
+from downstream_dataset import DownstreamDataset, DataCollatorForDownstream
 
 os.environ["NCCL_DEBUG"] = "WARN"
 LABEL_NUM = {'mosi': 1, 'meld': 7, 'snips': 7, 'mosei': 1, 'mintrec': 20, 'iemocap': 6}
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     # 3. load model
-    model = ATForSequenceClassification.from_pretrained(args.model, config=config, num_class=label_num).to(args.device)
+    model = ATForSequenceClassification.from_pretrained(args.model, task=args.task, config=config, num_class=label_num).to(args.device)
     # print(next(model.named_parameters()))
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
