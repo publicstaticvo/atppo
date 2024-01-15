@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.
 from util import *
 from word_rm import WordAlignTrainer
 from sentence_rm import SentenceAlignTrainer
-from dataset import ATDataset, SentenceAlignDataset, DataCollatorForWordRM, DataCollatorForSentenceRM
+from dataset import ATDataset, DataCollatorForWordRM, DataCollatorForSentenceRM
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 from transformers import RobertaTokenizerFast, AdamW, get_linear_schedule_with_warmup
@@ -106,14 +106,9 @@ if __name__ == "__main__":
     config.set_pooling_mode(args.audio_pooling_mode, args.text_pooling_mode)
     tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
     # 4。读输入数据
-    if args.align_mode == "word":
-        model_class = WordAlignTrainer
-        train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
-        c = DataCollatorForWordRM(tokenizer, config, args.apex_level > 0)
-    else:
-        model_class = SentenceAlignTrainer
-        train_data = SentenceAlignDataset(args.transcripts, args.num_turns, args.file_prefix)
-        c = DataCollatorForSentenceRM(tokenizer, config, train_data, args.apex_level > 0)
+    model_class = WordAlignTrainer if args.align_mode == "word" else SentenceAlignTrainer
+    train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
+    c = DataCollatorForWordRM(tokenizer, config, args.apex_level > 0) if args.align_mode == "word" else DataCollatorForSentenceRM(tokenizer, config, train_data, args.apex_level > 0)
     if args.model_path:
         model = model_class.from_pretrained(args.model_path, config=config)
     else:

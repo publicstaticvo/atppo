@@ -1,42 +1,39 @@
-import numpy as np
 from util import *
-from .dataset_base import ATDataset, DataCollatorForAT
+from .dataset_base import DataCollatorForAT
 
 
-class SentenceAlignDataset(ATDataset):
+class DataCollatorForSingleTurnSRM:
 
-    def __init__(self, datas, num_turns, file_prefix=None):
-        super(SentenceAlignDataset, self).__init__(datas, num_turns, file_prefix)
+    def __init__(self, tokenizer, config, fp16=False):
+        self.num_negative = config.num_negative
+        self.tokenizer = tokenizer
+        self.config = config
+        self.fp16 = fp16
 
-    def negative_sampling_step(self, audio, start, end):
-        if audio.shape[0] > 81600 and random.random() < 0.7:
-            new_start = random.randint(0, audio.shape[0] - end + start - 1600)
-            if start <= new_start <= start + 1600:
-                new_start += 1600
-            new_end = new_start + end - start
-            new_audio = torch.cat([audio[:start], audio[new_start:new_end], audio[end:]])
-            align_score = min(1, abs(new_start - start) / 10000)
-            return new_audio, align_score
-        replace_audio = torch.from_numpy(np.load(random.choice(self.datas)[0])).to(dtype=audio.dtype)
-        while replace_audio.shape[0] < end - start + 40000:
-            replace_audio = torch.from_numpy(np.load(random.choice(self.datas)[0])).to(dtype=audio.dtype)
-        new_start = random.randint(0, replace_audio.shape[0] - end + start)
-        new_end = new_start + end - start
-        new_audio = torch.cat([audio[:start], replace_audio[new_start:new_end], audio[end:]])
-        return new_audio, 1
-
-    def negative_sampling(self, history, query, history_transcript, query_transcript):
-        num_steps = random.randint(1, len(history_transcript) + len(query_transcript))
-        num_history_steps = max(min(num_steps * len(history) // (len(history) + len(query)), len(history_transcript)), num_steps - len(query_transcript))
-        num_query_steps = num_steps - num_history_steps
-        total_score = 0
-        for tr in random.sample(history_transcript, num_history_steps):
-            history, score = self.negative_sampling_step(history, tr[-2], tr[-1])
-            total_score += score
-        for tr in random.sample(query_transcript, num_query_steps):
-            query, score = self.negative_sampling_step(query, tr[-2], tr[-1])
-            total_score += score
-        return history, query, total_score
+    def __call__(self, batch):
+        audios, a_mask, texts, t_mask = [], [], [], []
+        ml = 0
+        for item in batch:
+            ml = max([ml, len(item[1])])
+        ml = min(ml, self.config.text.max_length)
+        ma = 0
+        for item in batch:
+            ma = max([ma, len(item[2])])
+        ma = self.config.audio.max_length + 1600 * (ma - 1)
+        for item in batch:
+            a, t, tr = item
+            a = torch.HalfTensor(a) if self.fp16 else torch.FloatTensor(a)
+            ba = construct_audio_batch(a, tr)
+            for b in ba:
+                b, bm = pad_cut(b, ma)
+                audios.append(b)
+                a_mask.append(bm)
+            t = torch.LongTensor(t)
+            t, tm = pad_cut(t, ml)
+            texts.append(t)
+            t_mask.append(tm)
+        audios, a_mask, texts, t_mask = map(lambda x: torch.stack(x, dim=0), [audios, a_mask, texts, t_mask])
+        return audios, a_mask, texts, t_mask
 
 
 class DataCollatorForSentenceRM(DataCollatorForAT):
@@ -62,7 +59,7 @@ class DataCollatorForSentenceRM(DataCollatorForAT):
 
             negative_indices = []
             for i in range(self.num_negative):
-                na, npa, score = self.dataset.negative_sampling(aa, pa, atr, ptr)
+                na, npa, score = negative_audio(self.dataset, aa, pa, atr, ptr)
                 negative_indices.append([na, npa, score])
             negative_indices = sorted(negative_indices, key=lambda x: x[-1])
 

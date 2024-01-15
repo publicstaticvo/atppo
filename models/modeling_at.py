@@ -1,5 +1,6 @@
 from util import *
 from torch import nn
+from .wavlm import WavLMForMultiModal
 from transformers import PreTrainedModel
 from transformers.models.roberta.modeling_roberta import RobertaModel, RobertaEncoder
 
@@ -45,3 +46,20 @@ class ATModel(PreTrainedModel):
             fused_input = self.fused_encoder(fused_input, fused_attention_mask).last_hidden_state
             return fused_input, mam_labels, a_masked
         return (audio_features, audio_mask, text_features), mam_labels, a_masked
+
+
+class ATSingleTurnModel(ATModel):
+
+    def __init__(self, config: ATConfig, audio=None, text=None):
+        super(ATSingleTurnModel, self).__init__(config, WavLMForMultiModal, audio, text)
+
+    def forward(self, audio_input, text_input, audio_mask=None, text_mask=None, *args, **kwargs):
+        audio_features, audio_mask, *_ = self.audio_encoder(audio_input, audio_mask)
+        text_features = self.text_encoder(text_input, text_mask)[0]
+        if self.num_fused_layers > 0:
+            fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_mask)
+            fused_input = self.fused_encoder(fused_input, fused_attention_mask).last_hidden_state
+            text_len = text_input.shape[1]
+            text_features = fused_input[:, :text_len]
+            audio_features = fused_input[:, text_len:]
+        return audio_features, audio_mask, text_features

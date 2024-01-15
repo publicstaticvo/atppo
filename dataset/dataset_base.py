@@ -4,6 +4,24 @@ from torch.utils.data import Dataset
 from util import *
 
 
+class SingleTurnDataset(Dataset):
+    def __init__(self, datas, file_prefix=None):
+        super(SingleTurnDataset, self).__init__()
+        if isinstance(datas, str):
+            with open(datas, "rb") as f:
+                self.datas = pickle.load(f)
+        else:
+            self.datas = datas
+        self.prefix = file_prefix
+
+    def __len__(self):
+        return len(self.datas)
+
+    def __getitem__(self, idx):
+        fn = self.datas[idx][0].replace("/mnt/ewwe/yts/at", self.prefix) if self.prefix is not None else self.datas[idx][0]
+        return np.load(fn), self.datas[idx][1], self.datas[idx][2:-1]
+
+
 class ATDataset(Dataset):
     def __init__(self, datas, num_turns, file_prefix=None):
         if isinstance(datas, str):

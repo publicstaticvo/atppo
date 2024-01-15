@@ -70,11 +70,11 @@ class DataCollatorForTPP(DataCollatorForAT):
             if negative.shape[0] > ml:
                 offset_n = ml - nt.shape[0] - 1
             else:
-                offset_n = offset_a + at.shape[0]
+                offset_n = history.shape[0] - 1 + at.shape[0]
             p_text, p_tam = pad_cut(positive, ml)
             n_text, n_tam = pad_cut(negative, ml)
-            asv, aev, asl, ael = compute_valid_for_tpp(atr, offset_a, offset_p, self.mode, self.audio_length)
-            psv, pev, psl, pel = compute_valid_for_tpp(ptr, 0, ml - offset_p, self.mode, self.audio_length)
+            asv, aev, asl, ael = compute_valid_for_tpp(atr, offset_a, offset_p, self.audio_length, self.mode)
+            psv, pev, psl, pel = compute_valid_for_tpp(ptr, 0, ml - offset_p, self.audio_length, self.mode)
             sv = torch.cat([asv, psv])
             ev = torch.cat([aev, pev])
             start_valid.append(sv)

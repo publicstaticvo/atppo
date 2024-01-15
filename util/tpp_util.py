@@ -1,7 +1,7 @@
 import torch
 
 
-def compute_valid_for_tpp(transcript, offset, length, mode, audio_length):
+def compute_valid_for_tpp(transcript, offset, length, audio_length, mode=True):
     sv = [0 for _ in range(length)]
     ev = [0 for _ in range(length)]
     start_labels, end_labels = [], []

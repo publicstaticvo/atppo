@@ -2,11 +2,12 @@ import torch
 import random
 import torch.distributed as dist
 
-from .ppo import step
 from .parallel import DDP
 from .configuration_at import ATConfig
 from .tpp_util import compute_valid_for_tpp
+from .ppo_util import step, concat_audio
 from .word_rm import *
+from .sent_rm import *
 
 
 def pad(sequence, length):
@@ -18,16 +19,17 @@ def pad(sequence, length):
 
 def pad_cut(sequence, length, pad_token=0):
     seq_len = sequence.shape[0]
+    device = sequence.device
     if length > seq_len:
-        padding = torch.ones(length - seq_len, dtype=sequence.dtype) * pad_token
+        padding = torch.ones(length - seq_len, dtype=sequence.dtype, device=device) * pad_token
         sequence = torch.cat([sequence, padding])
-        att = torch.cat([torch.ones(seq_len, dtype=torch.long), padding.long()])
+        att = torch.cat([torch.ones(seq_len, dtype=torch.long, device=device), padding.long()])
     else:
         if sequence.dtype == torch.long:
             sequence = torch.cat([sequence[:1], sequence[1 - length:]])
         else:
             sequence = sequence[:length]
-        att = torch.ones(length, dtype=torch.long)
+        att = torch.ones(length, dtype=torch.long, device=device)
     return sequence, att
 
 
@@ -95,11 +97,14 @@ __all__ = ['DDP',
            'ATConfig',
            'get_rank',
            'similarity',
+           'concat_audio',
+           'negative_audio',
            'negative_sampling',
            'scale_audio_length',
            'get_eval_ds_config',
            'get_train_ds_config',
            'compute_valid_for_rm',
            'compute_valid_for_tpp',
+           'construct_audio_batch',
            'group_scale_audio_length'
            ]

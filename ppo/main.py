@@ -72,7 +72,6 @@ if __name__ == "__main__":
     args.num_train_steps = args.train_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
     # 4。建立模型
     trainer = PPOTrainer(args)
-    args.num_ends = trainer.num_ends
     c = DataCollatorForPPO(args, tokenizer)
     if args.local_rank >= 0:
         train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=20)
@@ -86,15 +85,17 @@ if __name__ == "__main__":
         le = len(inner_it)
         if isinstance(train_loader.sampler, DistributedSampler):
             train_loader.sampler.set_epoch(i)
-        losses = [0, 0]
+        losses = [0, 0, 0, 0]
         for j, batch in enumerate(inner_it):
-            a_input, a_mask, full_text, t_input, t_label, t_mask, s_valid, e_valid, token_type, split_marks = batch
-            a_input, a_mask, full_text, t_input, t_label, t_mask, token_type = map(lambda x: x.to(args.device), [a_input, a_mask, full_text, t_input, t_label, t_mask, token_type])
-            s_valid, e_valid = map(lambda x: [t.to(args.device) for t in x], [s_valid, e_valid])
-            mlm, mam, rs, span, kl, loss = trainer.train_ppo(a_input, a_mask, full_text, t_input, t_mask, t_label, token_type, s_valid, e_valid, split_marks)
+            batch = {k: v if k == "splits" else v.to(args.device) for k, v in batch}
+            mlm, mam, rs, ppo, actor, critic = trainer.train_ppo(**batch)
+            losses[0] += float(actor)
+            losses[1] += float(critic)
+            losses[2] += float(rs)
+            losses[3] += float(ppo)
             if not args.dont_show and get_rank() == 0:
-                inner_it.set_postfix_str(f"loss: {loss:.4f}|rs: {rs:.4f}|sp: {span:.4f}|kl: {kl:.4f}")
+                inner_it.set_postfix_str(f"actor: {actor:.4f}|critic: {critic:.4f}|ppo: {ppo:.4f}|rs: {rs:.4f}")
         if get_rank() == 0 and ((i + 1) % args.save_interval == 0 or args.save_tmp) and args.model_save_path:
             trainer.save_pretrained(os.path.join(args.model_save_path, f"{args.model_name}-{i + 1}" if (i + 1) % args.save_interval == 0 else args.save_tmp))
         if get_rank() == 0:
-            outer_it.set_postfix_str(f"loss: {losses[0] / le:.4f}|rm:{losses[1] / le:.4f}")
+            outer_it.set_postfix_str(f"actor: {losses[0] / le:.4f}|critic:{losses[1] / le:.4f}|ppo: {losses[3] / le:.4f}|rs: {losses[2] / le:.4f}")

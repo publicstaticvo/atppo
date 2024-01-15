@@ -1,6 +1,6 @@
 from .at_tpp import ATForTPP
-from .modeling_at import ATModel
-from .rm import ATModelForSentenceAlign, ATModelForWordAlign
+from .modeling_at import ATModel, ATSingleTurnModel
+from .rm import ATModelForSentenceAlign, ATModelForWordAlign, ATSingleTurnForSentenceAlign
 from .wavlm import (
     WavLMMAMHead,
     WavLMEncoder,
@@ -13,8 +13,10 @@ from .wavlm import (
 
 __all__ = ["ATModel",
            "ATForTPP",
+           "ATSingleTurnModel",
            "ATModelForWordAlign",
            "ATModelForSentenceAlign",
+           "ATSingleTurnForSentenceAlign",
            "WavLMMAMHead",
            "WavLMEncoder",
            "WavLMFeatureEncoder",

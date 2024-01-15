@@ -27,8 +27,8 @@ class DataCollatorForDP(DataCollatorForAT):
             else:
                 offset_a = history.shape[0] - 1
                 offset_p = offset_a + at.shape[0]
-            asv, _, asl, _ = compute_valid_for_tpp(atr, offset_a, offset_p, self.mode, self.audio_length)
-            psv, *_ = compute_valid_for_tpp(ptr, 0, ml - offset_p, self.mode, self.audio_length)
+            asv, _, asl, _ = compute_valid_for_tpp(atr, offset_a, offset_p, self.audio_length)
+            psv, *_ = compute_valid_for_tpp(ptr, 0, ml - offset_p, self.audio_length)
             start_valid.extend([asv, psv])
             split_marks.append(len(asl))
             text.append(t)

@@ -1,13 +1,12 @@
-import torch
 from util import ATConfig
 from rm_trainer import AlignTrainer
-from models import ATModelForSentenceAlign
+from models import ATSingleTurnForSentenceAlign
 
 
 class SentenceAlignTrainer(AlignTrainer):
 
     def __init__(self, config: ATConfig, audio=None, text=None, bias=False, maximum_reward=5):
-        super(SentenceAlignTrainer, self).__init__(config, ATModelForSentenceAlign, audio, text, bias=bias)
+        super(SentenceAlignTrainer, self).__init__(config, ATSingleTurnForSentenceAlign, audio, text, bias=bias)
         self.M = maximum_reward
 
     def reward_loss(self, scores, eps=1e-3):

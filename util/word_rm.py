@@ -27,11 +27,15 @@ def group_scale_audio_length(arr, config):
     return arr
 
 
-def similarity(x, y, t, mode="cosine"):
+def similarity(x, y, t, mode="cross_attn"):
     if mode == "cosine":
         return torch.mm(normalize(x), normalize(y).transpose(0, 1)) / t
     if mode == "distance":
         return -torch.norm(x.unsqueeze(1) - y.unsqueeze(0), dim=-1) / t
+    if mode == "diag_cosine":
+        return (normalize(x) * normalize(y)).sum(-1) / t
+    if mode == "diag_cross_attn":
+        return (x * y).sum(-1) / t
     return torch.mm(x, y.transpose(0, 1)) / t
 
 

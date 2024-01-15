@@ -29,10 +29,8 @@ class TPPTrainer(PreTrainedModel):
         # self.conv_dim = config.audio.conv_dim[-1]
         self.ce = torch.nn.CrossEntropyLoss()
         self.l1 = torch.nn.L1Loss()
-        self.step_count = 0
 
     def tpp_loss(self, text_fused, start_valid=None, end_valid=None, starts=None, ends=None):
-        self.step_count += 1
         words = text_fused.masked_select(start_valid.unsqueeze(-1)).view(-1, self.hidden_size)
         pred_start = self.start_prediction_head(words).squeeze(-1)
         words = text_fused.masked_select(end_valid.unsqueeze(-1)).view(-1, self.hidden_size)

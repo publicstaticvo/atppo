@@ -1,16 +1,19 @@
-from .dataset_base import ATDataset
+from .dataset_base import ATDataset, DataCollatorForAT, SingleTurnDataset
 from .tpp_dataset import TPPDataset, DataCollatorForTPP
-from .word_rm_dataloader import DataCollatorForWordRM
+from .word_rm_dataloader import DataCollatorForWordRM, DataCollatorForSingleTurnWRM
 from .dp_dataloader import DataCollatorForDP
-from .sentence_rm_dataset import SentenceAlignDataset, DataCollatorForSentenceRM
+from .sentence_rm_dataset import DataCollatorForSentenceRM, DataCollatorForSingleTurnSRM
 from .ppo_dataloader import DataCollatorForPPO
 
 __all__ = ["ATDataset",
            "TPPDataset",
-           "SentenceAlignDataset",
+           "SingleTurnDataset",
+           "DataCollatorForAT",
            "DataCollatorForDP",
            "DataCollatorForTPP",
            "DataCollatorForPPO",
            "DataCollatorForWordRM",
-           "DataCollatorForSentenceRM"
+           "DataCollatorForSentenceRM",
+           "DataCollatorForSingleTurnSRM",
+           "DataCollatorForSingleTurnWRM"
            ]

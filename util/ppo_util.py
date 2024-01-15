@@ -5,6 +5,20 @@ except ImportError:
     print("ImportError: no modul named amp")
 
 
+def concat_audio(audio, transcript):
+    new_audio = []
+    for i, t in enumerate(transcript):
+        if i > 0:
+            new_audio.append(torch.zeros(1600, dtype=audio.dtype))
+        new_audio.append(audio[t[0]:t[1]])
+    new_audio = torch.cat(new_audio)
+    return new_audio
+
+
+def batch_concat_audio(audio, transcript):
+    new_audios = [concat_audio(a, tr) for a, tr in zip(audio, transcript)]
+
+
 def step(loss, model, args, optimizer=None, scheduler=None):
     if args.ds_config:
         model.backward(loss)

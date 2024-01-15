@@ -1,0 +1,16 @@
+python /mnt/ewwe/yts/at/atppo/rm/main.py \
+    --align_mode=sent \
+    --apex_level=2 \
+    --audio_length=10 \
+    --batch_size=24 \
+    --grad_acc=2 \
+    --lr=1e-5 \
+    --model_path=/mnt/ewwe/yts/at/atppo/saved_models/v6.1.1-80 \
+    --model_save_path=/mnt/ewwe/yts/at/atppo/ \
+    --model_name=test \
+    --num_negative=10 \
+    --save_interval=100 \
+    --save_tmp=/mnt/ewwe/yts/at/atppo/models/debug \
+    --text_path=/mnt/ewwe/yts/at/models/robertaForV3 \
+    --train_epochs=10 \
+    --transcripts=/mnt/ewwe/yts/at/spotify-960/test.pkl

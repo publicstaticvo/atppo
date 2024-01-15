@@ -143,7 +143,7 @@ if __name__ == "__main__":
                     argmax = i
             # 回溯路径
             s, e = [], [argmax]
-            for j in range(n - 1, -1, -1):
+            for j in reversed(range(n)):
                 if j > 0:
                     e.append(ends[e[-1]][j])
                 s.append(starts[e[-1]][j])

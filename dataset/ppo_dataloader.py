@@ -1,32 +1,53 @@
 import torch
 from .dataset_base import DataCollatorForAT
 from util import pad_cut, compute_valid_for_tpp
+
 SAMPLE_RATE = 16000
 
 
 class DataCollatorForPPO(DataCollatorForAT):
     def __init__(self, args, tokenizer, mlm_prob=0.15):
         super(DataCollatorForPPO, self).__init__(tokenizer, args, fp16=args.apex_level > 0, mlm_prob=mlm_prob)
-        self.audio_length = int(args.audio_length * SAMPLE_RATE)
-        self.mode = args.num_ends > 1
+        self.audio_length = int((args.audio_length + 0.1) * SAMPLE_RATE)
+        self.text_length = args.max_length
 
     def __call__(self, batch):
-        audios, a_mask, text, masked_text, text_labels, t_mask, start_valid, end_valid, valid_filter, token_type, split_marks = [], [], [], [], [], [], [], [], [], [], []
+        audios, a_mask = [], []
+        masked_text, t_mask, text_labels = [], [], []
+        start_valid, end_valid, offsets, splits = [], [], [], []
+        text_rm, t_mask_rm, start_valid_rm = [], [], []
+        turn_ids = []
         ml = 0
         for item in batch:
             ml = max([ml, len(item[1]) + len(item[4]) + len(item[8]) - 2, len(item[1]) + len(item[7]) + len(item[8]) - 2])
-        ml = min(ml, self.config.max_length)
+        ml = min(ml, self.text_length)
+        ml_for_rm = 0
         for item in batch:
-            # a: -1轮 p: 0轮 n: 负样本 history：<-2轮  一个完整句子由history(8)+at[1:](1)+pt[1:](4)组成
+            ml_for_rm = max([ml_for_rm, len(item[1]), len(item[4])])
+        ml_for_rm = min(ml_for_rm, self.text_length)
+        total_words = 0
+        for item in batch:
             aa, at, atr, pa, pt, ptr, na, nt, history = item
-            # 文本pad之后有两个
+            # 语音
+            aa, pa, na = map(torch.HalfTensor if self.fp16 else torch.FloatTensor, [aa, pa, na])
+            aa, a_aam = pad_cut(aa, self.audio_length)
+            pa, p_aam = pad_cut(pa, self.audio_length)
+            na, n_aam = pad_cut(na, self.audio_length)
+            audios.extend([aa, pa, na])
+            a_mask.extend([a_aam, p_aam, n_aam])
+            # full_text文本
             history, at, pt, nt = map(lambda x: torch.LongTensor(x), [history, at, pt, nt])
-            t = torch.cat([history, at[1:], pt[1:]])
-            t, _ = pad_cut(t, ml)
+            at_for_rm, at_for_rm_mask = pad_cut(at, ml_for_rm)
+            pt_for_rm, pt_for_rm_mask = pad_cut(pt, ml_for_rm)
+            text_rm.extend([at_for_rm, pt_for_rm])
+            t_mask_rm.extend([at_for_rm_mask, pt_for_rm_mask])
+            # masked文本
             ht, h_mlm_label = self.get_mlm_instance(history)
             at, a_mlm_label = self.get_mlm_instance(at[1:])
             pt, p_mlm_label = self.get_mlm_instance(pt[1:])
             nt, _ = self.get_mlm_instance(nt[1:])
+            mlm_label, _ = pad_cut(torch.cat([h_mlm_label, a_mlm_label, p_mlm_label]), ml, -100)
+            text_labels.append(mlm_label)
             positive = torch.cat([ht, at, pt])
             negative = torch.cat([ht, at, nt])
             if positive.shape[0] > ml:
@@ -38,31 +59,42 @@ class DataCollatorForPPO(DataCollatorForAT):
             if negative.shape[0] > ml:
                 offset_n = ml - nt.shape[0] - 1
             else:
-                offset_n = offset_a + at.shape[0]
+                offset_n = history.shape[0] - 1 + at.shape[0]
+            # offset_a: 前6轮的长度，无尾2 offset_p: 前7轮的长度，无尾2
             p_text, p_tam = pad_cut(positive, ml)
             n_text, n_tam = pad_cut(negative, ml)
-            asv, aev, asl, _ = compute_valid_for_tpp(atr, offset_a, offset_p, self.mode, self.audio_length)
-            psv, pev, psl, _ = compute_valid_for_tpp(ptr, 0, ml - offset_p, self.mode, self.audio_length)
-            start_valid.extend([asv, psv])
-            end_valid.extend([aev, pev])
-            split_marks.append(len(asl))
-            text.append(t)
-            p_token_type = torch.cat([torch.zeros(offset_p + 1), torch.ones(ml - offset_p - 1)]).long()
-            n_token_type = torch.cat([torch.zeros(offset_n + 1), torch.ones(ml - offset_n - 1)]).long()
-            mlm_label, _ = pad_cut(torch.cat([h_mlm_label, a_mlm_label, p_mlm_label]), ml, -100)
             masked_text.extend([p_text, n_text])
             t_mask.extend([p_tam, n_tam])
-            text_labels.append(mlm_label)
-            token_type.extend([p_token_type, n_token_type])
-            # 音频有三个
-            aa, pa, na = map(torch.HalfTensor if self.fp16 else torch.FloatTensor, [aa, pa, na])
-            aa, a_aam = pad_cut(aa, self.audio_length)
-            pa, p_aam = pad_cut(pa, self.audio_length)
-            na, n_aam = pad_cut(na, self.audio_length)
-            audios.extend([aa, pa, na])
-            a_mask.extend([a_aam, p_aam, n_aam])
-        audios, a_mask, text, masked_text, text_labels, t_mask, token_type = map(
+            # valid
+            asv, aev, asl, _ = compute_valid_for_tpp(atr, offset_a, offset_p, self.audio_length)
+            psv, pev, psl, _ = compute_valid_for_tpp(ptr, 0, ml - offset_p, self.audio_length)
+            start_valid.append(torch.cat([asv, psv]))
+            end_valid.append(torch.cat([aev, pev]))
+            start_valid_rm.extend([torch.cat([asv[offset_a:], torch.BoolTensor([0])]), psv])
+            total_words += len(asl)
+            splits.append([total_words])
+            total_words += len(psl)
+            splits[-1].append(total_words)
+            # turn_id
+            p_token_type = torch.cat([torch.zeros(offset_p + 1), torch.ones(ml - offset_p - 1)]).long()
+            n_token_type = torch.cat([torch.zeros(offset_n + 1), torch.ones(ml - offset_n - 1)]).long()
+            turn_ids.extend([p_token_type, n_token_type])
+        audios, a_mask, masked_text, t_mask, text_labels, start_valid, end_valid, text_rm, t_mask_rm, start_valid_rm, turn_ids = map(
             lambda x: torch.stack(x, dim=0),
-            [audios, a_mask, text, masked_text, text_labels, t_mask, token_type]
+            [audios, a_mask, masked_text, t_mask, text_labels, start_valid, end_valid, text_rm, t_mask_rm,
+             start_valid_rm, turn_ids]
         )
-        return audios, a_mask, text, masked_text, text_labels, t_mask, start_valid, end_valid, token_type, split_marks
+        return {
+            "audio_input": audios,
+            "audio_mask": a_mask,
+            "text_input": masked_text,
+            "text_mask": t_mask,
+            "mlm_label": text_labels,
+            "turn_id": turn_ids,
+            "start_valid": start_valid,
+            "end_valid": end_valid,
+            "full_text_for_rm": text_rm,
+            "full_text_for_rm_mask": t_mask_rm,
+            "start_valid_for_rm": start_valid_rm,
+            "splits": splits
+        }
