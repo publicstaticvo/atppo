@@ -15,10 +15,6 @@ def concat_audio(audio, transcript):
     return new_audio
 
 
-def batch_concat_audio(audio, transcript):
-    new_audios = [concat_audio(a, tr) for a, tr in zip(audio, transcript)]
-
-
 def step(loss, model, args, optimizer=None, scheduler=None):
     if args.ds_config:
         model.backward(loss)
