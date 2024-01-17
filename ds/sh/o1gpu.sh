@@ -1,7 +1,7 @@
 #! /bin/bash
 
-li=(v5.0.2-80 v5.0.2-100 v6.6-2 v6.6-4 v6.6-6 v6.6-8 v6.6-10)
-for ((i=0;i<=6;i++))
+li=(v6.1.2-20 v6.1.2-40 v6.1.2-60 v6.1.2-80 v6.1.2-100)
+for ((i=0;i<=4;i++))
 do
 python main.py --task mintrec --apex_level 1 --dont_show --output_file o1.csv --epochs 10 --batch_size 32 --accumulate_num 1 --lr 2e-5 --model ${li[$i]}
 python main.py --task mintrec --apex_level 1 --dont_show --output_file o1.csv --epochs 10 --batch_size 32 --accumulate_num 2 --lr 2e-5 --model ${li[$i]}

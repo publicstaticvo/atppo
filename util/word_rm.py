@@ -51,4 +51,4 @@ def compute_valid_for_rm(sequences, length, pooling_mode):
         else:
             for j in range(start, end):
                 valid[i][j] = 1
-    return torch.BoolTensor(valid), len(sequences)
+    return torch.BoolTensor(valid)

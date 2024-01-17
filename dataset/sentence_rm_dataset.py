@@ -16,14 +16,15 @@ class DataCollatorForSingleTurnSRM:
         for item in batch:
             ml = max([ml, len(item[1])])
         ml = min(ml, self.config.text.max_length)
-        ma = 0
-        for item in batch:
-            ma = max([ma, len(item[2])])
-        ma = self.config.audio.max_length + 1600 * (ma - 1)
+        # ma = 0
+        # for item in batch:
+        #     ma = max([ma, len(item[2])])
+        # ma = self.config.audio.max_length + 1600 * ma
+        ma = 2 * self.config.audio.max_length
         for item in batch:
             a, t, tr = item
             a = torch.HalfTensor(a) if self.fp16 else torch.FloatTensor(a)
-            ba = construct_audio_batch(a, tr)
+            ba = construct_audio_batch(a, tr, self.num_negative)
             for b in ba:
                 b, bm = pad_cut(b, ma)
                 audios.append(b)

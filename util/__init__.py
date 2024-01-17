@@ -21,7 +21,7 @@ def pad_cut(sequence, length, pad_token=0):
     seq_len = sequence.shape[0]
     device = sequence.device
     if length > seq_len:
-        padding = torch.ones(length - seq_len, dtype=sequence.dtype, device=device) * pad_token
+        padding = (torch.ones(length - seq_len, device=device) * pad_token).to(dtype=sequence.dtype)
         sequence = torch.cat([sequence, padding])
         att = torch.cat([torch.ones(seq_len, dtype=torch.long, device=device), padding.long()])
     else:

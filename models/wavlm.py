@@ -720,7 +720,6 @@ class WavLMForMultiModal(WavLMPreTrainedModel):
         self.feature_extractor = WavLMFeatureEncoder(config)
         self.feature_projection = WavLMFeatureProjection(config)
         self.audio_cls = nn.Parameter(torch.randn(config.hidden_size), requires_grad=True)
-        self.audio_sep = nn.Parameter(torch.randn(config.hidden_size), requires_grad=True)
         if config.do_stable_layer_norm:
             self.encoder = WavLMEncoderStableLayerNorm(config)
         else:
@@ -731,7 +730,7 @@ class WavLMForMultiModal(WavLMPreTrainedModel):
     def concat_multi_turn(self, hidden_states, attention_mask, *args, **kwargs):
         bs = hidden_states.shape[0]
         device = hidden_states.device
-        attention_mask = torch.cat([torch.zeros(bs, 1).long().to(device), attention_mask], dim=1)
+        attention_mask = torch.cat([torch.ones(bs, 1, dtype=torch.long, device=device), attention_mask], dim=1)
         hidden_states = torch.cat([self.audio_cls[None, None, :].repeat(bs, 1, 1), hidden_states], dim=1)
         token_type_ids = torch.ones(hidden_states.shape[:2], dtype=torch.long, device=device)
         return hidden_states, attention_mask, token_type_ids, None, None
@@ -767,6 +766,7 @@ class WavLMForMultiTurn(WavLMForMultiModal):
 
     def __init__(self, config):
         super(WavLMForMultiTurn, self).__init__(config)
+        self.audio_sep = nn.Parameter(torch.randn(config.hidden_size), requires_grad=True)
 
     def concat_multi_turn(self, hidden_states, attention_mask, real_length=None, masked_indices=None, mam_labels=None, *args, **kwargs):
         bs = hidden_states.shape[0] // 2
@@ -797,7 +797,7 @@ class WavLMForMultiTurn(WavLMForMultiModal):
         return hidden_states, attention_mask, token_type_ids, (masked_indices_for_concat, masked_indices), mam_labels
 
 
-class WavLMForCRS(WavLMForMultiModal):
+class WavLMForCRS(WavLMForMultiTurn):
 
     def __init__(self, config):
         super(WavLMForCRS, self).__init__(config)

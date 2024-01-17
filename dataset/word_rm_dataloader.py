@@ -26,11 +26,10 @@ class DataCollatorForSingleTurnWRM:
 
             text_marks = [[x[1], x[2]] for x in tr]
             audio_marks = [[x[3], x[4]] for x in tr]
-            audio_marks = group_scale_audio_length(torch.LongTensor(audio_marks), self.config.audio) + 1
-            audio_marks += 1
-            audio_valid, _ = compute_valid_for_rm(audio_marks.tolist(), 100, self.config.audio.pooling_mode)
-            text_valid, num = compute_valid_for_rm(text_marks, ml, self.config.text.pooling_mode)
-            assert num == len(audio_valid) == len(tr)
+            audio_marks = group_scale_audio_length(torch.LongTensor(audio_marks), self.config.audio) + 1  # audio_cls
+            audio_valid = compute_valid_for_rm(audio_marks.tolist(), 101, self.config.audio.pooling_mode)
+            text_valid = compute_valid_for_rm(text_marks, ml, self.config.text.pooling_mode)
+            assert len(audio_valid) == len(tr)
             # 负采样
             negative_indices.append(negative_sampling(tr, self.num_negative))
             audios.append(a)
@@ -86,9 +85,9 @@ class DataCollatorForWordRM(DataCollatorForAT):
             positive_audio_marks += (anchor_audio_marks[-1, 1] + 1)
             # 0在scale_audio_length之后会变-1
             audio_marks = torch.cat([anchor_audio_marks, positive_audio_marks], dim=0)
-            audio_valid, _ = compute_valid_for_rm(audio_marks.tolist(), 202, self.config.audio.pooling_mode)
-            text_valid, num = compute_valid_for_rm(text_marks, ml, self.config.text.pooling_mode)
-            assert num == len(audio_valid) == len(atr) + len(ptr)
+            audio_valid = compute_valid_for_rm(audio_marks.tolist(), 202, self.config.audio.pooling_mode)
+            text_valid = compute_valid_for_rm(text_marks, ml, self.config.text.pooling_mode)
+            assert len(audio_valid) == len(atr) + len(ptr)
             # 负采样
             negative_indices.append(negative_sampling(atr + ptr, self.num_negative))
 

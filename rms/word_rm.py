@@ -25,7 +25,7 @@ class WordAlignTrainer(AlignTrainer):
             losses += loss
         return losses / bs
 
-    def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id=None, audio_valid=None, text_valid=None, neg=None):
-        audio_features, _, text_features = self.model(audio_input, text_input, audio_mask, text_mask, turn_id)
+    def forward(self, audio_input, text_input, audio_mask, text_mask, audio_valid=None, text_valid=None, neg=None):
+        audio_features, _, text_features = self.model(audio_input, text_input, audio_mask, text_mask)
         rm_loss = self.reward_loss(audio_features, text_features, audio_valid, text_valid, neg)
         return rm_loss
