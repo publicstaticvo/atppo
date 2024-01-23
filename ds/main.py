@@ -46,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument("--task", type=str, choices=['ic10', 'ic11', 'ic12', 'meld', 'mosi', 'mintrec', 'mosei'])
     parser.add_argument('--tokenizer', type=str, default="/mnt/ewwe/yts/at/models/robertaForV3")
-    parser.add_argument('--warmup', type=float, default=0.)
+    parser.add_argument('--warmup', type=float, default=0.01)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     args = parser.parse_args()
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
