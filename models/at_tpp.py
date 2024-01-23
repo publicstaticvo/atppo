@@ -44,6 +44,4 @@ class ATForTPP(ATModel):
         # text_features: 2B * 514 * 768
         fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_mask)
         fused_input = self.fused_encoder(fused_input, fused_attention_mask).last_hidden_state
-        if mask_modeling:
-            return fused_input, out[2], out[3]
-        return fused_input
+        return fused_input, out[2], out[3]

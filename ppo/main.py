@@ -10,7 +10,7 @@ print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
 from ppo_trainer import PPOTrainer
-from dataset import ATDataset, DataCollatorForPPO
+from dataset import TPPDataset, DataCollatorForPPO
 from transformers import RobertaTokenizerFast
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         torch.cuda.manual_seed_all(args.seed)
     # 3。读输入数据
     tokenizer = RobertaTokenizerFast.from_pretrained(args.tokenizer_path)
-    train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
+    train_data = TPPDataset(args.transcripts, args.num_turns, args.file_prefix)
     args.num_train_steps = args.train_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
     # 4。建立模型
     trainer = PPOTrainer(args)
@@ -87,7 +87,7 @@ if __name__ == "__main__":
             train_loader.sampler.set_epoch(i)
         losses = [0, 0, 0, 0]
         for j, batch in enumerate(inner_it):
-            batch = {k: v if k == "splits" else v.to(args.device) for k, v in batch}
+            batch = {k: v if k == "splits" else v.to(args.device) for k, v in batch.items()}
             mlm, mam, rs, ppo, actor, critic = trainer.train_ppo(**batch)
             losses[0] += float(actor)
             losses[1] += float(critic)

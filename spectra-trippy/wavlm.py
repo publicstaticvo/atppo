@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 from torch import nn
+from typing import Optional, Tuple
 from transformers.activations import ACT2FN
 from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import BaseModelOutput, CausalLMOutput
@@ -16,6 +17,120 @@ MASK_CONSECUTIVE_MIN = 20
 MASK_CONSECUTIVE_MAX = 50
 MASK_PROPORTION = 0.15
 MASK_BLOCK = 1.2
+
+
+def _compute_mask_indices(shape: Tuple[int, int], mask_prob: float, mask_length: int,
+                          attention_mask: Optional[torch.LongTensor] = None, min_masks: int = 0) -> np.ndarray:
+    """
+    Computes random mask spans for a given shape. Used to implement [SpecAugment: A Simple Data Augmentation Method for
+    ASR](https://arxiv.org/abs/1904.08779). Note that this method is not optimized to run on TPU and should be run on
+    CPU as part of the preprocessing during training.
+
+    Args:
+        shape: The shape for which to compute masks. This should be of a tuple of size 2 where
+               the first element is the batch size and the second element is the length of the axis to span.
+        mask_prob:  The percentage of the whole axis (between 0 and 1) which will be masked. The number of
+                    independently generated mask spans of length `mask_length` is computed by
+                    `mask_prob*shape[1]/mask_length`. Note that due to overlaps, `mask_prob` is an upper bound and the
+                    actual percentage will be smaller.
+        mask_length: size of the mask
+        min_masks: minimum number of masked spans
+        attention_mask: A (right-padded) attention mask which independently shortens the feature axis of
+                        each batch dimension.
+    """
+    batch_size, sequence_length = shape
+
+    if mask_length < 1:
+        raise ValueError("`mask_length` has to be bigger than 0.")
+
+    if mask_length > sequence_length:
+        raise ValueError(
+            f"`mask_length` has to be smaller than `sequence_length`, but got `mask_length`: {mask_length}"
+            f" and `sequence_length`: {sequence_length}`"
+        )
+
+    # epsilon is used for probabilistic rounding
+    epsilon = np.random.rand(1).item()
+
+    def compute_num_masked_span(input_length):
+        """Given input length, compute how many spans should be masked"""
+        num_masked_span = int(mask_prob * input_length / mask_length + epsilon)
+        num_masked_span = max(num_masked_span, min_masks)
+
+        # make sure num masked span <= sequence_length
+        if num_masked_span * mask_length > sequence_length:
+            num_masked_span = sequence_length // mask_length
+
+        # make sure num_masked span is also <= input_length - (mask_length - 1)
+        if input_length - (mask_length - 1) < num_masked_span:
+            num_masked_span = max(input_length - (mask_length - 1), 0)
+
+        return num_masked_span
+
+    # compute number of masked spans in batch
+    input_lengths = (
+        attention_mask.sum(-1).detach().tolist()
+        if attention_mask is not None
+        else [sequence_length for _ in range(batch_size)]
+    )
+
+    # SpecAugment mask to fill
+    spec_aug_mask = np.zeros((batch_size, sequence_length), dtype=np.bool)
+    spec_aug_mask_idxs = []
+
+    max_num_masked_span = compute_num_masked_span(sequence_length)
+
+    if max_num_masked_span == 0:
+        return spec_aug_mask
+
+    for input_length in input_lengths:
+        # compute num of masked spans for this input
+        num_masked_span = compute_num_masked_span(input_length)
+
+        # get random indices to mask
+        spec_aug_mask_idx = np.random.choice(
+            np.arange(input_length - (mask_length - 1)), num_masked_span, replace=False
+        )
+
+        # pick first sampled index that will serve as a dummy index to pad vector
+        # to ensure same dimension for all batches due to probabilistic rounding
+        # Picking first sample just pads those vectors twice.
+        if len(spec_aug_mask_idx) == 0:
+            # this case can only happen if `input_length` is strictly smaller then
+            # `sequence_length` in which case the last token has to be a padding
+            # token which we can use as a dummy mask id
+            dummy_mask_idx = sequence_length - 1
+        else:
+            dummy_mask_idx = spec_aug_mask_idx[0]
+
+        spec_aug_mask_idx = np.concatenate(
+            [spec_aug_mask_idx, np.ones(max_num_masked_span - num_masked_span, dtype=np.int32) * dummy_mask_idx]
+        )
+        spec_aug_mask_idxs.append(spec_aug_mask_idx)
+
+    spec_aug_mask_idxs = np.array(spec_aug_mask_idxs)
+
+    # expand masked indices to masked spans
+    spec_aug_mask_idxs = np.broadcast_to(
+        spec_aug_mask_idxs[:, :, None], (batch_size, max_num_masked_span, mask_length)
+    )
+    spec_aug_mask_idxs = spec_aug_mask_idxs.reshape(batch_size, max_num_masked_span * mask_length)
+
+    # add offset to the starting indexes so that indexes now create a span
+    offsets = np.arange(mask_length)[None, None, :]
+    offsets = np.broadcast_to(offsets, (batch_size, max_num_masked_span, mask_length)).reshape(
+        batch_size, max_num_masked_span * mask_length
+    )
+    spec_aug_mask_idxs = spec_aug_mask_idxs + offsets
+
+    # ensure that we cannot have indices larger than sequence_length
+    if spec_aug_mask_idxs.max() > sequence_length - 1:
+        spec_aug_mask_idxs[spec_aug_mask_idxs > sequence_length - 1] = sequence_length - 1
+
+    # scatter indices to mask
+    np.put_along_axis(spec_aug_mask, spec_aug_mask_idxs, 1, -1)
+
+    return spec_aug_mask
 
 
 # Copied from transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2NoLayerNormConvLayer with Wav2Vec2->WavLM
@@ -117,11 +232,26 @@ class WavLMFeatureEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
 
+        # if config.feat_extract_norm == "group":
+        #     conv_layers = [WavLMGroupNormConvLayer(config, layer_id=0)]
+        #     for i in range(1, config.num_feat_extract_layers - 1):
+        #         conv_layers.append(WavLMNoLayerNormConvLayer(config, layer_id=i))
+        #     conv_layers.append(WavLMLayerNormConvLayer(config, layer_id=config.num_feat_extract_layers - 1))
+
+        # if config.feat_extract_norm == "group":
+        #     conv_layers = [WavLMGroupNormConvLayer(config, layer_id=0)]
+        #     for i in range(1, config.num_feat_extract_layers - 1):
+        #         conv_layers.append(WavLMNoLayerNormConvLayer(config, layer_id=i))
+        #     if config.last_conv_layer == "no":
+        #         conv_layers.append(WavLMNoLayerNormConvLayer(config, layer_id=config.num_feat_extract_layers - 1))
+        #     elif config.last_conv_layer == "layer":
+        #         conv_layers.append(WavLMLayerNormConvLayer(config, layer_id=config.num_feat_extract_layers - 1))
+        #     else:
+        #         conv_layers.append(WavLMGroupNormConvLayer(config, layer_id=config.num_feat_extract_layers - 1))
         if config.feat_extract_norm == "group":
-            conv_layers = [WavLMGroupNormConvLayer(config, layer_id=0)]
-            for i in range(1, config.num_feat_extract_layers):
-                conv_layers.append(WavLMNoLayerNormConvLayer(config, layer_id=i))
-            # conv_layers.append(WavLMGroupNormConvLayer(config, layer_id=config.num_feat_extract_layers - 1))
+            conv_layers = [WavLMGroupNormConvLayer(config, layer_id=0)] + [
+                WavLMNoLayerNormConvLayer(config, layer_id=i + 1) for i in range(config.num_feat_extract_layers - 1)
+            ]
         elif config.feat_extract_norm == "layer":
             conv_layers = [WavLMLayerNormConvLayer(config, layer_id=i) for i in range(config.num_feat_extract_layers)]
         else:
@@ -423,7 +553,8 @@ class WavLMEncoder(nn.Module):
         all_self_attentions = () if output_attentions else None
         if attention_mask is not None:
             # make sure padded tokens output 0
-            hidden_states[~attention_mask] = 0.0
+            # hidden_states[~attention_mask] = 0.0
+            hidden_states[(~attention_mask)+2] = 0.0
         position_embeddings = self.pos_conv_embed(hidden_states)
         hidden_states = hidden_states + position_embeddings
         hidden_states = self.layer_norm(hidden_states)
@@ -525,6 +656,76 @@ class WavLMEncoderStableLayerNorm(nn.Module):
         )
 
 
+class WavLMGumbelVectorQuantizer(nn.Module):
+    """
+    Vector quantization using gumbel softmax. See [CATEGORICAL REPARAMETERIZATION WITH
+    GUMBEL-SOFTMAX](https://arxiv.org/pdf/1611.01144.pdf) for more information.
+    """
+
+    def __init__(self, config):
+        super().__init__()
+        self.num_groups = config.num_codevector_groups
+        self.num_vars = config.num_codevectors_per_group
+
+        if config.codevector_dim % self.num_groups != 0:
+            raise ValueError(
+                f"`config.codevector_dim {config.codevector_dim} must be divisible"
+                f" by `config.num_codevector_groups` {self.num_groups} "
+                "for concatenation."
+            )
+
+        # storage for codebook variables (codewords)
+        self.codevectors = nn.Parameter(
+            torch.FloatTensor(1, self.num_groups * self.num_vars, config.codevector_dim // self.num_groups)
+        )
+        self.weight_proj = nn.Linear(config.conv_dim[-1], self.num_groups * self.num_vars)
+
+        # can be decayed for training
+        self.temperature = 2
+
+    @staticmethod
+    def _compute_perplexity(probs):
+        marginal_probs = probs.mean(dim=0)
+        perplexity = torch.exp(-torch.sum(marginal_probs * torch.log(marginal_probs + 1e-7), dim=-1)).sum()
+        return perplexity
+
+    def forward(self, hidden_states):
+        batch_size, sequence_length, hidden_size = hidden_states.shape
+
+        # project to codevector dim
+        hidden_states = self.weight_proj(hidden_states)
+        hidden_states = hidden_states.view(batch_size * sequence_length * self.num_groups, -1)
+
+        if self.training:
+            # sample code vector probs via gumbel in differentiateable way
+            codevector_probs = nn.functional.gumbel_softmax(hidden_states.float(), tau=self.temperature, hard=True)
+            codevector_probs = codevector_probs.type_as(hidden_states)
+
+            # compute perplexity
+            codevector_soft_dist = torch.softmax(
+                hidden_states.view(batch_size * sequence_length, self.num_groups, -1).float(), dim=-1
+            )
+            perplexity = self._compute_perplexity(codevector_soft_dist)
+        else:
+            # take argmax in non-differentiable way
+            # comptute hard codevector distribution (one hot)
+            codevector_idx = hidden_states.argmax(dim=-1)
+            codevector_probs = hidden_states.new_zeros(*hidden_states.shape).scatter_(
+                -1, codevector_idx.view(-1, 1), 1.0
+            )
+            codevector_probs = codevector_probs.view(batch_size * sequence_length, self.num_groups, -1)
+
+            perplexity = self._compute_perplexity(codevector_probs)
+
+        codevector_probs = codevector_probs.view(batch_size * sequence_length, -1)
+        # use probs to retrieve codevectors
+        codevectors_per_group = codevector_probs.unsqueeze(-1) * self.codevectors
+        codevectors = codevectors_per_group.view(batch_size * sequence_length, self.num_groups, self.num_vars, -1)
+        codevectors = codevectors.sum(-2).view(batch_size, sequence_length, -1)
+
+        return codevectors, perplexity
+
+
 # Copied from transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Adapter with Wav2Vec2->WavLM
 class WavLMAdapter(nn.Module):
     def __init__(self, config):
@@ -610,7 +811,13 @@ class WavLMPreTrainedModel(PreTrainedModel):
     supports_gradient_checkpointing = True
 
     def _init_weights(self, module):
-        if isinstance(module, WavLMPositionalConvEmbedding):
+        """Initialize the weights"""
+        # gumbel softmax requires special init
+        if isinstance(module, WavLMGumbelVectorQuantizer):
+            module.weight_proj.weight.data.normal_(mean=0.0, std=1)
+            module.weight_proj.bias.data.zero_()
+            nn.init.uniform_(module.codevectors)
+        elif isinstance(module, WavLMPositionalConvEmbedding):
             nn.init.normal_(
                 module.conv.weight,
                 mean=0,
@@ -640,7 +847,7 @@ class WavLMPreTrainedModel(PreTrainedModel):
         add_adapter = self.config.add_adapter if add_adapter is None else add_adapter
 
         def _conv_out_length(input_length, kernel_size, stride):
-            return torch.div(input_length - kernel_size, stride, rounding_mode='trunc') + 1
+            return torch_int_div(input_length - kernel_size, stride) + 1
 
         for kernel_size, stride in zip(self.config.conv_kernel, self.config.conv_stride):
             input_lengths = _conv_out_length(input_lengths, kernel_size, stride)
@@ -652,12 +859,13 @@ class WavLMPreTrainedModel(PreTrainedModel):
     def _get_feature_vector_attention_mask(self, feature_vector_length, attention_mask, add_adapter=None):
         non_padded_lengths = torch.sum(attention_mask, dim=-1)
         output_lengths = self._get_feat_extract_output_lengths(non_padded_lengths, add_adapter=add_adapter)
-        output_lengths = torch.clamp_max(output_lengths + 1, feature_vector_length).long()
+        output_lengths = output_lengths.to(torch.long)
         batch_size = attention_mask.shape[0]
-        attention_mask = torch.zeros((batch_size, feature_vector_length)).to(attention_mask.device, dtype=attention_mask.dtype)
+        attention_mask = torch.zeros((batch_size, feature_vector_length)).to(attention_mask.device,
+                                                                             dtype=attention_mask.dtype)
         attention_mask[(torch.arange(attention_mask.shape[0], device=attention_mask.device), output_lengths - 1)] = 1
         attention_mask = attention_mask.flip([-1]).cumsum(-1).flip([-1]).bool()
-        return output_lengths.tolist(), attention_mask
+        return torch.clamp_min(output_lengths, 0).tolist(), attention_mask
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder)):
@@ -710,8 +918,8 @@ def create_mam_samples(audio, audio_len):
     return audio.to(dtype=dtype), masked.to(dtype=torch.bool), labels.to(dtype=dtype)
 
 
-class WavLMForMultiModal(WavLMPreTrainedModel):
-    _keys_to_ignore_on_load_missing = [r"position_ids", r"conv_layers\.7", r"token_embedding", r"audio_cls", r"audio_sep"]
+class WavLMForMAM(WavLMPreTrainedModel):
+    _keys_to_ignore_on_load_missing = [r"position_ids", r"conv_layers\.7", r"mask_token"]
     _keys_to_ignore_on_load_unexpected = [r"masked_spec_embed"]
 
     def __init__(self, config):
@@ -719,36 +927,35 @@ class WavLMForMultiModal(WavLMPreTrainedModel):
         self.config = config
         self.feature_extractor = WavLMFeatureEncoder(config)
         self.feature_projection = WavLMFeatureProjection(config)
-        self.audio_cls = nn.Parameter(torch.randn(config.hidden_size), requires_grad=True)
+        if config.has_audio_cls:
+            self.audio_cls = nn.Parameter(torch.randn(config.hidden_size), requires_grad=True)
         if config.do_stable_layer_norm:
             self.encoder = WavLMEncoderStableLayerNorm(config)
         else:
             self.encoder = WavLMEncoder(config)
         self.adapter = WavLMAdapter(config) if config.add_adapter else None
+        # Initialize weights and apply final processing
         self.post_init()
 
-    def concat_multi_turn(self, hidden_states, attention_mask, *args, **kwargs):
-        bs = hidden_states.shape[0]
-        device = hidden_states.device
-        attention_mask = torch.cat([torch.ones(bs, 1, dtype=torch.long, device=device), attention_mask], dim=1)
-        hidden_states = torch.cat([self.audio_cls[None, None, :].repeat(bs, 1, 1), hidden_states], dim=1)
-        token_type_ids = torch.ones(hidden_states.shape[:2], dtype=torch.long, device=device)
-        return hidden_states, attention_mask, token_type_ids, None, None
-
-    def forward(self, input_values, attention_mask, perform_mam=False, token_embedding=None):
+    def forward(self, input_values, attention_mask, perform_mam=False):
         output_attentions = self.config.output_attentions
         output_hidden_states = self.config.output_hidden_states
         return_dict = self.config.use_return_dict
+        
         extract_features = self.feature_extractor(input_values)
         extract_features = extract_features.transpose(1, 2)
-        out_len, attention_mask = self._get_feature_vector_attention_mask(extract_features.shape[1], attention_mask, add_adapter=False)
-        masked_indices, mam_labels = None, None
+        out_len, attention_mask = self._get_feature_vector_attention_mask(
+            extract_features.shape[1], attention_mask, add_adapter=False
+        )
+        mam_labels, masked_indices = None, None
         if perform_mam:
             extract_features, masked_indices, mam_labels = create_mam_samples(extract_features, out_len)
         hidden_states, extract_features = self.feature_projection(extract_features)
-        hidden_states, attention_mask, token_type_ids, masked_indices, mam_labels = self.concat_multi_turn(hidden_states, attention_mask, real_length=out_len, masked_indices=masked_indices, mam_labels=mam_labels)
-        if token_embedding is not None:
-            hidden_states = hidden_states + token_embedding(token_type_ids)
+        if self.config.has_audio_cls:
+            bs = input_values.shape[0]
+            attention_mask = torch.cat([torch.zeros(bs, 1).long().to(input_values.device), attention_mask], dim=1)
+            hidden_states = torch.cat([self.audio_cls[None, None, :].repeat(bs, 1, 1), hidden_states], dim=1)
+
         encoder_outputs = self.encoder(
             hidden_states,
             attention_mask=attention_mask,
@@ -762,72 +969,127 @@ class WavLMForMultiModal(WavLMPreTrainedModel):
         return hidden_states, attention_mask, mam_labels, masked_indices
 
 
-class WavLMForMultiTurn(WavLMForMultiModal):
+class WavLMForMultiturn(WavLMPreTrainedModel):
+    _keys_to_ignore_on_load_missing = [r"position_ids", r"conv_layers\.1", r"mask_token"]
+    _keys_to_ignore_on_load_unexpected = [r"masked_spec_embed"]
 
     def __init__(self, config):
-        super(WavLMForMultiTurn, self).__init__(config)
+        super().__init__(config)
+        self.config = config
+        self.feature_extractor = WavLMFeatureEncoder(config)
+        self.feature_projection = WavLMFeatureProjection(config)
+        # if config.has_audio_cls:
+        self.audio_cls = nn.Parameter(torch.randn(config.hidden_size), requires_grad=True)
         self.audio_sep = nn.Parameter(torch.randn(config.hidden_size), requires_grad=True)
+        if config.do_stable_layer_norm:
+            self.encoder = WavLMEncoderStableLayerNorm(config)
+        else:
+            self.encoder = WavLMEncoder(config)
+        self.adapter = WavLMAdapter(config) if config.add_adapter else None
+        # Initialize weights and apply final processing
+        self.post_init()
 
-    def concat_multi_turn(self, hidden_states, attention_mask, real_length=None, masked_indices=None, mam_labels=None, *args, **kwargs):
-        bs = hidden_states.shape[0] // 2
-        audio_len = hidden_states.shape[1]
-        new_len = audio_len * 2 + 2
-        mam = masked_indices is not None
-        a1, a2 = torch.split(hidden_states.view(bs, 2, -1, self.config.hidden_size), 1, dim=1)
-        m1, m2 = torch.split(attention_mask.view(bs, 2, -1), 1, dim=1)
-        a1, a2, m1, m2 = map(lambda x: x.squeeze(1), [a1, a2, m1, m2])
-        hidden_states = torch.zeros([bs, new_len, self.config.hidden_size], device=a1.device, dtype=a1.dtype)
-        attention_mask = torch.zeros([bs, new_len], device=a1.device, dtype=torch.bool)
-        token_type_ids = torch.ones([bs, new_len], device=a1.device, dtype=torch.long)
-        masked_indices_for_concat = torch.zeros([bs, new_len], device=a1.device, dtype=masked_indices.dtype) if mam else None
-        for i in range(bs):
-            la1, la2 = real_length[2 * i: 2 * i + 2]
-            pl = la1 + la2 + 2
-            hidden_states[i, :pl] = torch.cat(
-                [self.audio_cls.unsqueeze(0), a1[i, :la1], self.audio_sep.unsqueeze(0), a2[i, :la2]], dim=0)
-            token_type_ids[i, :la1 + 1] = 0
-            attention_mask[i, :pl] = True
-            if mam:
-                masked_indices_for_concat[i, :pl] = torch.cat(
-                    [torch.tensor([0]).bool().to(a1.device), masked_indices[2 * i][:la1, 0],
-                     torch.tensor([0]).bool().to(a1.device), masked_indices[2 * i + 1][:la2, 0]], dim=0)
-        if mam:
-            masked_indices = masked_indices.view(bs * 2, audio_len, 1)
-            mam_labels = mam_labels.view(bs * 2, audio_len, -1)
-        return hidden_states, attention_mask, token_type_ids, (masked_indices_for_concat, masked_indices), mam_labels
+    def forward(self, input_values, attention_mask, perform_mam=False):
+        output_attentions = self.config.output_attentions
+        output_hidden_states = self.config.output_hidden_states
+        return_dict = self.config.use_return_dict
+
+        extract_features_a = self.feature_extractor(input_values[0])
+        extract_features_a = extract_features_a.transpose(1, 2)
+        extract_features_a, _ = self.feature_projection(extract_features_a)
+        out_len_a, attention_mask_a = self._get_feature_vector_attention_mask(
+            extract_features_a.shape[1], attention_mask[0], add_adapter=False
+        )
+
+        extract_features_b = self.feature_extractor(input_values[1])
+        extract_features_b = extract_features_b.transpose(1, 2)
+        extract_features_b, _ = self.feature_projection(extract_features_b)
+        out_len_b, attention_mask_b = self._get_feature_vector_attention_mask(
+            extract_features_b.shape[1], attention_mask[1], add_adapter=False
+        )
+
+        batch_size = extract_features_a.shape[0]
+        hidden_states = torch.cat((self.audio_cls.reshape(1, 1, -1).expand(batch_size, 1, -1), extract_features_a, 
+                                      self.audio_sep.reshape(1, 1, -1).expand(batch_size, 1, -1), extract_features_b), dim = 1)
+        attention_mask = torch.cat((torch.ones((batch_size, 1)).to(self.audio_cls.device), attention_mask_a, 
+                                    torch.ones((batch_size, 1)).to(self.audio_cls.device), attention_mask_b), dim = 1).long()
+        
+        encoder_outputs = self.encoder(
+            hidden_states,
+            attention_mask=attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        hidden_states = encoder_outputs[0]
+        if self.adapter is not None:
+            hidden_states = self.adapter(hidden_states)
+        return hidden_states, attention_mask
 
 
-class WavLMForCRS(WavLMForMultiTurn):
-
+class WavLMForSequenceClassification(WavLMPreTrainedModel):
     def __init__(self, config):
-        super(WavLMForCRS, self).__init__(config)
+        super().__init__(config)
 
-    def concat_multi_turn(self, hidden_states, attention_mask, real_length=None, masked_indices=None, mam_labels=None, *args, **kwargs):
-        bs = hidden_states.shape[0] // 3
-        audio_len = hidden_states.shape[1]
-        new_len = audio_len * 2 + 2
-        mam = masked_indices is not None
-        aa, pa, na = torch.split(hidden_states.view(bs, 3, -1, self.config.hidden_size), 1, dim=1)
-        am, pm, nm = torch.split(attention_mask.view(bs, 3, -1), 1, dim=1)
-        aa, pa, na, am, pm, nm = map(lambda x: x.squeeze(1), [aa, pa, na, am, pm, nm])
-        hidden_states = torch.zeros([bs * 2, new_len, self.config.hidden_size], device=aa.device, dtype=aa.dtype)
-        attention_mask = torch.zeros([bs * 2, new_len], device=aa.device, dtype=torch.bool)
-        token_type_ids = torch.ones([bs * 2, new_len], device=aa.device, dtype=torch.long)
-        masked_indices_for_concat = torch.zeros([bs, new_len], device=aa.device, dtype=masked_indices.dtype) if mam else None
-        for i in range(bs):
-            laa, lpa, lna = real_length[3 * i: 3 * i + 3]
-            pl = laa + lpa + 2
-            hidden_states[2 * i, :pl] = torch.cat([self.audio_cls.unsqueeze(0), aa[i][:laa], self.audio_sep.unsqueeze(0), pa[i][:lpa]], dim=0)
-            attention_mask[2 * i, :pl] = True
-            nl = laa + lna + 2
-            hidden_states[2 * i + 1, :nl] = torch.cat([self.audio_cls.unsqueeze(0), aa[i][:laa], self.audio_sep.unsqueeze(0), na[i][:lna]], dim=0)
-            attention_mask[2 * i + 1, :nl] = True
-            if mam:
-                masked_indices_for_concat[i, :pl] = torch.cat(
-                    [torch.tensor([0]).bool().to(aa.device), masked_indices[3 * i][:laa, 0],
-                     torch.tensor([0]).bool().to(aa.device), masked_indices[3 * i + 1][:lpa, 0]], dim=0)
-            token_type_ids[2 * i: 2 * i + 2, :laa + 1] = 0
-        if mam:
-            masked_indices = masked_indices.view(bs, 3, audio_len, 1)[:, :2].contiguous().view(bs * 2, audio_len, 1)
-            mam_labels = mam_labels.view(bs, 3, audio_len, -1)[:, :2].contiguous().view(bs * 2, audio_len, -1)
-        return hidden_states, attention_mask, token_type_ids, (masked_indices_for_concat, masked_indices), mam_labels
+        if hasattr(config, "add_adapter") and config.add_adapter:
+            raise ValueError(
+                "Sequence classification does not support the use of WavLM adapters (config.add_adapter=True)"
+            )
+        self.wavlm = WavLMModel(config)
+        num_layers = config.num_hidden_layers + 1  # transformer layers + input embeddings
+        if config.use_weighted_layer_sum:
+            self.layer_weights = nn.Parameter(torch.ones(num_layers) / num_layers)
+        self.projector = nn.Linear(config.hidden_size, 768)
+        self.classifier = nn.Linear(config.classifier_proj_size, config.num_labels)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def forward(
+        self,
+        input_values: Optional[torch.Tensor],
+        attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        labels: Optional[torch.Tensor] = None,
+                ):
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        output_hidden_states = True if self.config.use_weighted_layer_sum else output_hidden_states
+
+        outputs = self.wavlm(
+            input_values,
+            attention_mask=attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        # if self.config.use_weighted_layer_sum:
+        hidden_states = outputs[_HIDDEN_STATES_START_POSITION]
+        hidden_states = torch.stack(hidden_states, dim=1)
+        norm_weights = nn.functional.softmax(self.layer_weights, dim=-1)
+        hidden_states = (hidden_states * norm_weights.view(-1, 1, 1)).sum(dim=1)
+        # else:
+        #     hidden_states = outputs[0]
+
+        hidden_states = self.projector(hidden_states)
+
+        _, padding_mask = self._get_feature_vector_attention_mask(hidden_states.shape[1], attention_mask)
+        hidden_states[~padding_mask] = 0.0
+        pooled_output = hidden_states.sum(dim=1) / padding_mask.sum(dim=1).view(-1, 1)
+
+        # logits = self.classifier(pooled_output)
+
+        # loss = None
+        # if labels is not None:
+        #     loss_fct = CrossEntropyLoss()
+        #     loss = loss_fct(logits.view(-1, self.config.num_labels), labels.view(-1))
+
+        # if not return_dict:
+        #     output = (logits,) + outputs[_HIDDEN_STATES_START_POSITION:]
+        #     return ((loss,) + output) if loss is not None else output
+
+        return hidden_states, pooled_output
+        

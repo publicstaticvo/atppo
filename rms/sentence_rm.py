@@ -15,7 +15,7 @@ class SentenceAlignTrainer(AlignTrainer):
         scores_cumsum = scores.flip([-1]).cumsum(-1).flip([-1])[:, :-1]
         return -(scores[:, :-1] / scores_cumsum.clamp_min(eps)).log().mean()
 
-    def forward(self, audio_input, text_input, audio_mask, text_mask, turn_id):
-        scores = self.model(audio_input, text_input, audio_mask, text_mask, turn_id)
+    def forward(self, audio_input, text_input, audio_mask, text_mask):
+        scores = self.model(audio_input, text_input, audio_mask, text_mask)
         pro_loss = self.reward_loss(scores)
         return pro_loss

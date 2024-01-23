@@ -3,8 +3,7 @@ import random
 import numpy as np
 
 
-def construct_audio_batch(audio, transcript):
-    num_steps = random.randint(1, len(transcript))
+def construct_audio_batch(audio, transcript, num_steps):
     positive = []
     for i, t in enumerate(transcript):
         if i > 0:
@@ -18,12 +17,12 @@ def construct_audio_batch(audio, transcript):
         # 变换坐标点
         steps = random.randint(1, len(transcript))
         for j in random.sample(list(range(len(transcript))), steps):
-            tr[j][0] = random.randint(0, 99) * 1600
-            tr[j][1] = random.randint(tr[j][0] + 1, 100) * 1600
+            tr[j][0] = random.randint(0, 99)
+            tr[j][1] = random.randint(tr[j][0] + 1, 100)
         for j, t in enumerate(tr):
             if j > 0:
                 negative.append(torch.zeros(1600))
-            negative.append(audio[t[0]:t[1]])
+            negative.append(audio[t[0]*1600:t[1]*1600])
         negative = torch.cat(negative)
         negatives.append([negative, steps])
     negatives = [x[0] for x in sorted(negatives, key=lambda y: y[1])]
