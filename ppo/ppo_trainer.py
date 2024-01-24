@@ -4,11 +4,9 @@ import torch
 from apex import amp
 from torch.optim import AdamW
 from apex.optimizers import FusedAdam
-from torch.nn.functional import normalize
 from transformers import get_linear_schedule_with_warmup
 
 from util import *
-from torch import nn
 from actor_model import ActorModel
 from models import ATSingleTurnModel, ATSingleTurnForSentenceAlign
 SAMPLE_RATE = 1600

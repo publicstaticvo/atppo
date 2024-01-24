@@ -1,34 +1,18 @@
 import torch
 from torch import nn
 from util import ATConfig
-from transformers import PreTrainedModel
-from transformers.models.roberta.modeling_roberta import RobertaLMHead, RobertaEncoder
-from models import ATForTPP, WavLMMAMHead, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder
+from models import ATForTPP, TrainerBase
 
 
-class TPPTrainer(PreTrainedModel):
-    config_class = ATConfig
+class TPPTrainer(TrainerBase):
     _keys_to_ignore_on_load_missing = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head"]
-    supports_gradient_checkpointing = True
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (RobertaEncoder, WavLMEncoder, WavLMEncoderStableLayerNorm, WavLMFeatureEncoder)):
-            module.gradient_checkpointing = value
 
     def __init__(self, config: ATConfig, audio=None, text=None, *args, **kwargs):
         super(TPPTrainer, self).__init__(config)
-        self.hidden_size = config.text.hidden_size
         self.num_ends = config.fused.num_ends
         self.model = ATForTPP(config, audio=audio, text=text)
-        self.mlm_head = RobertaLMHead(config.text)
-        self.mam_head = WavLMMAMHead(self.hidden_size, config.audio.conv_dim[-1])
-        self.selection_head = nn.Linear(self.hidden_size, 4)
         self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
         self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
-        self.vocab_size = config.text.vocab_size
-        # self.conv_dim = config.audio.conv_dim[-1]
-        self.ce = torch.nn.CrossEntropyLoss()
-        self.l1 = torch.nn.L1Loss()
 
     def tpp_loss(self, text_fused, start_valid=None, end_valid=None, starts=None, ends=None):
         words = text_fused.masked_select(start_valid.unsqueeze(-1)).view(-1, self.hidden_size)
@@ -41,25 +25,6 @@ class TPPTrainer(PreTrainedModel):
         if self.num_ends == 1:
             return torch.mean(torch.pow(pred - torch.cat([starts, ends]), 2)), pred
         return self.ce(pred, torch.cat([starts, ends])), pred
-
-    def mlm_loss(self, text, label):
-        mlm_pre = self.mlm_head(text)
-        mlm_loss = self.ce(mlm_pre.view(-1, self.vocab_size), label.view(-1))  # 未mask的位置，label为-100。
-        if torch.isnan(mlm_loss):
-            mlm_loss = torch.tensor(0.0, device=text.device)
-        return mlm_loss
-
-    def mam_loss(self, audio, label, masked_indices):
-        mam_pre = self.mam_head(audio)
-        mam_loss = torch.tensor(0.0, device=audio.device)
-        if torch.sum(masked_indices[1]) != 0:
-            mam_loss = self.l1(mam_pre.masked_select(masked_indices[0].unsqueeze(-1)), label.masked_select(masked_indices[1]))
-        return mam_loss
-
-    def response_selection(self, fused_input, batch_size):
-        response_select = self.selection_head(fused_input[:, :, 0].view(4 * batch_size, self.hidden_size))
-        rs_loss = self.ce(response_select, torch.arange(4).to(fused_input.device).repeat(batch_size))
-        return rs_loss
 
     def forward(self, audio_input, text_input, audio_attention_mask, text_attention_mask, mlm_label=None,
                 turn_id=None, start_valid=None, end_valid=None, starts=None, ends=None):

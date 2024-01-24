@@ -36,12 +36,9 @@ class ATForTPP(ATModel):
         return fused_input, fused_attention_mask
 
     def forward(self, audio_input, text_input, audio_mask=None, text_mask=None, turn_id=None, mask_modeling=False, *args, **kwargs):
-        # audio: 3B * 160000  text: 2B * 514  mlm_label: B * 514  turn_id: B * 514
         out = self.audio_encoder(audio_input, audio_mask, perform_mam=mask_modeling, token_embedding=self.text_encoder.embeddings.token_type_embeddings)
         audio_features, audio_mask = out[:2]
-        # audio_features: 2B * 200 * 768  audio_mask: 2B * 200  mam_label: B * 200  a_masked: B * 200
         text_features = self.text_encoder(text_input, text_mask, token_type_ids=turn_id)[0]
-        # text_features: 2B * 514 * 768
         fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_mask)
         fused_input = self.fused_encoder(fused_input, fused_attention_mask).last_hidden_state
         return fused_input, out[2], out[3]
