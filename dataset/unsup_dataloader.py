@@ -1,3 +1,5 @@
+import random
+
 import torch
 from .dataset_base import DataCollatorForAT
 from util import pad_cut, compute_valid_for_tpp
@@ -47,6 +49,22 @@ class UnsupervisedDataCollator(DataCollatorForAT):
 
     def __init__(self, tokenizer, config, fp16=False, mlm_prob=0.15):
         super(UnsupervisedDataCollator, self).__init__(tokenizer, config, fp16, mlm_prob)
+
+    def mask_single_word(self, text_input, transcript, mask_idx=None):
+        if mask_idx is None:
+            word = random.choice(transcript)
+        else:
+            word = transcript[mask_idx]
+        mask_token = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
+        labels = text_input.clone()
+        start, end = word[1:3]
+        r = random.random()
+        if r < 0.8:
+            text_input[start:end] = mask_token
+        elif r < 0.9:
+            random_words = [random.randint(0, len(self.tokenizer) - 3) for _ in range(start, end)]
+            text_input[start:end] = torch.LongTensor(random_words)
+        return text_input, labels
 
     def __call__(self, batch):
         audios, a_mask, texts, t_mask, labels, turn_id = [], [], [], [], [], []

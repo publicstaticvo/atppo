@@ -1,5 +1,6 @@
 from .at_tpp import ATForTPP
 from .trainer import TrainerBase
+from .fusion_module import FusionModule
 from .modeling_at import ATModel, ATSingleTurnModel
 from .rm import ATModelForSentenceAlign, ATModelForWordAlign, ATSingleTurnForSentenceAlign
 from .wavlm import (
@@ -18,6 +19,7 @@ __all__ = ["ATModel",
            "ATModelForWordAlign",
            "ATModelForSentenceAlign",
            "ATSingleTurnForSentenceAlign",
+           "FusionModule",
            "TrainerBase",
            "WavLMMAMHead",
            "WavLMEncoder",
