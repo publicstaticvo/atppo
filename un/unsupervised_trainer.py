@@ -15,16 +15,20 @@ class UnsupervisedTrainer(TrainerBase):
         self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
         self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
 
-    def forward(self, audio_input, text_input, audio_attention_mask, text_attention_mask, mlm_label=None,
+    def forward(self, audio_input, text_input, audio_attention_mask, text_attention_mask, mlm_labels=None,
                 turn_id=None, start_valid=None, end_valid=None):
-        # audio: 3B * 160000  text: 2B * 514  mlm_label: B * 514  turn_id: B * 514
-        fused_features, mam_label, a_masked = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id, mlm_label is not None)
-        bs, text_len = mlm_label.shape
-        fused_input = fused_features.view(bs, 4, -1, self.hidden_size)
-        text_fused = fused_input[:, 0, :text_len]
-        mlm = self.mlm_loss(text_fused, mlm_label)
-        mam = self.mam_loss(fused_input[:, 0, text_len:], mam_label, a_masked)
+        # audio: 3B * 160000  text: 2B * 514  mlm_labels: B * 514  turn_id: B * 514
+        fused_features, mam_label, a_masked = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id, mlm_labels is not None)
+        bs, text_len = mlm_labels.shape
+        rs_loss = 0
         if self.train_phase == 2:
-            rs_loss = self.response_selection(fused_input, bs)
-            return mlm, mam, rs_loss
-        return mlm, mam, 0
+            fused_features = fused_features.view(bs, 4, -1, self.hidden_size)
+            text_features = fused_features[:, 0, :text_len]
+            audio_features = fused_features[:, 0, text_len:]
+            rs_loss = self.response_selection(fused_features, bs)
+        else:
+            text_features = fused_features[:, :text_len]
+            audio_features = fused_features[:, text_len:]
+        mlm = self.mlm_loss(text_features, mlm_labels)
+        mam = self.mam_loss(audio_features, mam_label, a_masked)
+        return mlm, mam, rs_loss

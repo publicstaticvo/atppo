@@ -1,6 +1,6 @@
 from util import *
 from torch import nn
-from .wavlm import WavLMForMultiModal
+from .wavlm import WavLMForMultiModal, WavLMForMultiTurn
 from transformers import PreTrainedModel
 from transformers.models.roberta.modeling_roberta import RobertaModel, RobertaEncoder
 
@@ -12,7 +12,7 @@ class ATModel(PreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"masked_spec_embed"]
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: ATConfig, audio_class, audio=None, text=None, *args, **kwargs):
+    def __init__(self, config: ATConfig, audio_class=WavLMForMultiTurn, audio=None, text=None, *args, **kwargs):
         super(ATModel, self).__init__(config)
         self.hidden_size = config.text.hidden_size
         self.num_fused_layers = config.fused.num_hidden_layers

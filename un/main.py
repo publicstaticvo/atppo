@@ -130,6 +130,8 @@ if __name__ == "__main__":
     losses = []
     outer_it = tqdm.trange(args.train_epochs)
     for i in outer_it:
+        if i == 5:
+            break
         inner_it = train_loader if args.dont_show or get_rank() else tqdm.tqdm(train_loader, desc="Inner")
         le = len(inner_it)
         if isinstance(train_loader.sampler, DistributedSampler):

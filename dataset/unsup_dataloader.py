@@ -45,10 +45,8 @@ class DataCollatorForDP(DataCollatorForAT):
 
 class UnsupervisedDataCollator(DataCollatorForAT):
 
-    def __init__(self, tokenizer, config, dataset, fp16=False, mlm_prob=0.15):
+    def __init__(self, tokenizer, config, fp16=False, mlm_prob=0.15):
         super(UnsupervisedDataCollator, self).__init__(tokenizer, config, fp16, mlm_prob)
-        self.num_negative = config.num_negative
-        self.dataset = dataset
 
     def __call__(self, batch):
         audios, a_mask, texts, t_mask, labels, turn_id = [], [], [], [], [], []
