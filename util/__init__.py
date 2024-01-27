@@ -10,6 +10,18 @@ from .word_rm import *
 from .sent_rm import *
 
 
+def to_device(batch, device):
+    batch_to_device = {}
+    for k, v in batch.items():
+        if isinstance(v, torch.Tensor):
+            batch_to_device[k] = v.to(device)
+        elif isinstance(v, list) and isinstance(v[0], torch.Tensor):
+            batch_to_device[k] = [t.to(device) for t in v]
+        else:
+            batch_to_device[k] = v
+    return batch_to_device
+
+
 def pad(sequence, length):
     seq_len = sequence.shape[0]
     att = torch.cat([torch.ones_like(sequence), torch.zeros(length - seq_len, dtype=sequence.dtype)])
@@ -96,6 +108,7 @@ __all__ = ['DDP',
            'pad_cut',
            'ATConfig',
            'get_rank',
+           'to_device',
            'similarity',
            'concat_audio',
            'negative_audio',

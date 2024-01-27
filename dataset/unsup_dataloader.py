@@ -42,13 +42,22 @@ class DataCollatorForDP(DataCollatorForAT):
             audios.extend([aa, pa])
             a_mask.extend([a_aam, p_aam])
         audios, a_mask, text, t_mask, token_type = map(lambda x: torch.stack(x, dim=0), [audios, a_mask, text, t_mask, token_type])
-        return audios, a_mask, text, t_mask, start_valid, token_type, split_marks
+        return {
+            "audio_input": audios,
+            "audio_attention_mask": a_mask,
+            "text_input": text,
+            "text_attention_mask": t_mask,
+            "start_valid": start_valid,
+            "split_marks": split_marks,
+            "turn_id": token_type
+        }
 
 
 class UnsupervisedDataCollator(DataCollatorForAT):
 
-    def __init__(self, tokenizer, config, fp16=False, mlm_prob=0.15):
+    def __init__(self, tokenizer, config, fp16=False, mlm_prob=0.15, reconstruct=False):
         super(UnsupervisedDataCollator, self).__init__(tokenizer, config, fp16, mlm_prob)
+        self.reconstruct = reconstruct
 
     def mask_single_word(self, text_input, transcript, mask_idx=None):
         if mask_idx is None:
@@ -58,6 +67,8 @@ class UnsupervisedDataCollator(DataCollatorForAT):
         mask_token = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
         labels = text_input.clone()
         start, end = word[1:3]
+        labels[:start] = -100
+        labels[end:] = -100
         r = random.random()
         if r < 0.8:
             text_input[start:end] = mask_token
@@ -67,36 +78,44 @@ class UnsupervisedDataCollator(DataCollatorForAT):
         return text_input, labels
 
     def __call__(self, batch):
-        audios, a_mask, texts, t_mask, labels, turn_id = [], [], [], [], [], []
+        return_dict = {
+            "audio_input": [],
+            "audio_attention_mask": [],
+            "text_input": [],
+            "text_attention_mask": [],
+            "mlm_labels": [],
+            "turn_id": [],
+            "head_mask_for_fused": []
+        }
         ml = 0
         for item in batch:
             ml = max([ml, len(item[1]) + len(item[4]) + len(item[6]) - 2])
         ml = min(ml, self.config.text.max_length)
+        seq_length = ml + self.config.audio.max_length
         for item in batch:
             # at和pt 有0有2 history为N-2轮 有0有2 每一轮用2分隔
             aa, at, atr, pa, pt, ptr, history = item
             aa, pa = map(torch.HalfTensor if self.fp16 else torch.FloatTensor, [aa, pa])
             text = torch.LongTensor(history + at[1:] + pt[1:])
             offset_p = (ml - len(pt)) if text.shape[0] > ml else (len(history) - 2 + len(at))
-            text_input, mlm_label = self.get_mlm_instance(text)
-            text_input, tam = pad_cut(text_input, ml)
-            mlm_label, _ = pad_cut(mlm_label, ml, -100)
+            if self.reconstruct:
+                head = torch.zeros((seq_length, seq_length), dtype=torch.bool)
+                head[ml:, :ml] = True
+                head[:ml, ml:] = True
+                return_dict["head_mask_for_fused"].append(head)
+            else:
+                text, mlm_label = self.get_mlm_instance(text)
+                mlm_label, _ = pad_cut(mlm_label, ml, -100)
+                return_dict["mlm_labels"].append(mlm_label)
+            text, tam = pad_cut(text, ml)
+            return_dict["text_input"].append(text)
+            return_dict["text_attention_mask"].append(tam)
 
             aa, a_aam = pad_cut(aa, self.config.audio.max_length)
             pa, p_aam = pad_cut(pa, self.config.audio.max_length)
-            audios.extend([aa, pa])
-            a_mask.extend([a_aam, p_aam])
-            texts.append(text_input)
-            t_mask.append(tam)
-            labels.append(mlm_label)
+            return_dict["audio_input"].extend([aa, pa])
+            return_dict["audio_attention_mask"].extend([a_aam, p_aam])
             tid = torch.cat([torch.zeros(offset_p + 1), torch.ones(ml - offset_p - 1)]).long()
-            turn_id.append(tid)
-        audios, a_mask, texts, t_mask, labels, turn_id = map(lambda t: torch.stack(t, dim=0), [audios, a_mask, texts, t_mask, labels, turn_id])
-        return {
-            "audio_input": audios,
-            "audio_attention_mask": a_mask,
-            "text_input": texts,
-            "text_attention_mask": t_mask,
-            "mlm_labels": labels,
-            "turn_id": turn_id
-        }
+            return_dict["turn_id"].append(tid)
+        return_dict = {k: torch.stack(v, dim=0) for k, v in return_dict.items() if v}
+        return return_dict

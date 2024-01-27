@@ -100,4 +100,15 @@ class DataCollatorForTPP(DataCollatorForAT):
             [audios, a_mask, masked_text, text_labels, t_mask, start_valid, end_valid, token_type]
         )
         starts, ends = map(torch.LongTensor if self.mode else (lambda x: torch.tensor(x, dtype=audios.dtype)), [starts, ends])
-        return audios, a_mask, masked_text, text_labels, t_mask, start_valid, end_valid, token_type, starts, ends
+        return {
+            "audio_input": audios,
+            "audio_attention_mask": a_mask,
+            "text_input": masked_text,
+            "text_attention_mask": t_mask,
+            "mlm_label": text_labels,
+            "turn_id": token_type,
+            "start_valid": start_valid,
+            "end_valid": end_valid,
+            "starts": starts,
+            "ends": ends
+        }

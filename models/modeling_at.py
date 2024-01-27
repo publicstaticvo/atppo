@@ -12,7 +12,7 @@ class ATModel(PreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"masked_spec_embed"]
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: ATConfig, audio_class=WavLMForMultiTurn, audio=None, text=None, *args, **kwargs):
+    def __init__(self, config: ATConfig, audio_class, audio=None, text=None, *args, **kwargs):
         super(ATModel, self).__init__(config)
         self.hidden_size = config.text.hidden_size
         self.num_fused_layers = config.fused.num_hidden_layers
@@ -35,17 +35,8 @@ class ATModel(PreTrainedModel):
         fused_attention_mask = (1.0 - fused_attention_mask[:, None, None, :]) * torch.finfo(text_features.dtype).min
         return fused_input, fused_attention_mask
 
-    def forward(self, audio_input, text_input, audio_mask=None, text_mask=None, turn_id=None, mask_modeling=False, *args, **kwargs):
-        # audio: 3B * 160000  text: 2B * 514  mlm_label: B * 514  turn_id: B * 514
-        audio_features, audio_mask, mam_labels, a_masked = self.audio_encoder(audio_input, audio_mask, perform_mam=mask_modeling, token_embedding=self.text_encoder.embeddings.token_type_embeddings)
-        # audio_features: 2B * 200 * 768  audio_mask: 2B * 200  mam_label: B * 200  a_masked: B * 200
-        text_features = self.text_encoder(text_input, text_mask, token_type_ids=turn_id)[0]
-        # text_features: 2B * 514 * 768
-        if self.num_fused_layers > 0:
-            fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_mask)
-            fused_input = self.fused_encoder(fused_input, fused_attention_mask).last_hidden_state
-            return fused_input, mam_labels, a_masked
-        return (audio_features, audio_mask, text_features), mam_labels, a_masked
+    def forward(self, *args, **kwargs):
+        raise NotImplementedError
 
 
 class ATSingleTurnModel(ATModel):
@@ -62,4 +53,24 @@ class ATSingleTurnModel(ATModel):
             text_len = text_input.shape[1]
             text_features = fused_input[:, :text_len]
             audio_features = fused_input[:, text_len:]
-        return audio_features, audio_mask, text_features
+        return text_features, audio_features, audio_mask
+
+
+class ATMultiTurnModel(ATModel):
+
+    def __init__(self, config: ATConfig, audio=None, text=None, *args, **kwargs):
+        super(ATMultiTurnModel, self).__init__(config, WavLMForMultiTurn, audio, text)
+
+    def forward(self, audio_input, text_input, audio_mask=None, text_mask=None, turn_id=None, head_mask_for_fused=None,
+                mask_modeling=False, output_attentions=False, *args, **kwargs):
+        audio_features, audio_mask, mam_labels, a_masked = self.audio_encoder(audio_input, audio_mask, perform_mam=mask_modeling, token_embedding=self.text_encoder.embeddings.token_type_embeddings)
+        text_features = self.text_encoder(text_input, text_mask, token_type_ids=turn_id)[0]
+        if self.num_fused_layers > 0:
+            fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_mask)
+            fused_output = self.fused_encoder(fused_input, fused_attention_mask, output_attentions=output_attentions, head_mask=head_mask_for_fused)
+            fused_features = fused_output.last_hidden_state
+            if output_attentions:
+                attention = fused_output.all_self_attentions
+                return (fused_features, attention), mam_labels, a_masked
+            return fused_features, mam_labels, a_masked
+        return (audio_features, audio_mask, text_features), mam_labels, a_masked

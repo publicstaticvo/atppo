@@ -8,7 +8,7 @@ from torch.nn.functional import normalize
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
-from models import ATModel, WavLMForMultiTurn
+from models import ATMultiTurnModel, WavLMForMultiTurn
 from dataset import ATDataset, DataCollatorForDP
 from transformers import RobertaTokenizerFast
 from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     tokenizer = RobertaTokenizerFast.from_pretrained(args.tokenizer_path)
     train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
     # 4。建立模型
-    model = ATModel.from_pretrained(args.reward_path, audio_class=WavLMForMultiTurn).to(args.device)
+    model = ATMultiTurnModel.from_pretrained(args.reward_path).to(args.device)
     model = amp.initialize(model, opt_level=f"O{args.apex_level}", keep_batchnorm_fp32=False if args.apex_level >= 2 else None, loss_scale="dynamic")
     c = DataCollatorForDP(args, tokenizer)
     if args.local_rank >= 0:
@@ -103,13 +103,10 @@ if __name__ == "__main__":
         train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=SequentialSampler(train_data), shuffle=False)
     mean_map = construct_mean_map(200).to(args.device).half()
     for j, batch in enumerate(tqdm.tqdm(train_loader)):
-        a_input, a_mask, t_input, t_mask, s_valid, token_type, split_marks = batch
-        a_input, a_mask, t_input, t_mask, token_type = map(lambda x: x.to(args.device),
-                                                           [a_input, a_mask, t_input, t_mask, token_type])
-        s_valid = [t.to(args.device) for t in s_valid]
-        audio_features, text_words = model(a_input, t_input, a_mask, t_mask, token_type, text_valid=s_valid)
-        audio_features = split_audio_features(audio_features, a_mask)
-        text_words = split_text_words(text_words, split_marks)  # audio和text均为2B个
+        batch = to_device(batch, args.device)
+        audio_features, text_words = model(**batch)
+        audio_features = split_audio_features(audio_features, batch["audio_attention_mask"])
+        text_words = split_text_words(text_words, batch["split_marks"])  # audio和text均为2B个
         tpp_starts, tpp_ends = [], []  # 一个batch内部所有label打成一个1D数组
         for a, t in zip(audio_features, text_words):
             # a: M*H t: N*H

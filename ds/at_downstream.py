@@ -1,7 +1,7 @@
 from torch import nn
 from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
-from models import ATModel, WavLMForMultiTurn, WavLMForMultiModal
+from models import ATSingleTurnModel, ATMultiTurnModel, WavLMForMultiTurn, WavLMForMultiModal
 from util import ATConfig
 
 
@@ -12,7 +12,8 @@ class ATForSequenceClassification(PreTrainedModel):
 
     def __init__(self, config: ATConfig, task, num_class, *model_args, **model_kwargs):
         super(ATForSequenceClassification, self).__init__(config)
-        self.model = ATModel(config=config, audio_class=WavLMForMultiTurn if "ic" in task else WavLMForMultiModal)
+        model_class = ATMultiTurnModel if "ic" in task else ATSingleTurnModel
+        self.model = model_class(config)
         self.num_class = num_class
         hidden_size = config.text.hidden_size
         self.head = nn.Sequential(nn.Linear(hidden_size, hidden_size), ACT2FN['gelu'], nn.Linear(hidden_size, self.num_class))

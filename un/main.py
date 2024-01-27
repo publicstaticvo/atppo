@@ -11,7 +11,8 @@ import datetime
 print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
-from unsupervised_trainer import UnsupervisedTrainer
+from mlm_trainer import MaskedLMTrainer
+from reconstruct_trainer import ReconstructTrainer
 from dataset import TPPDataset, ATDataset, DataCollatorForTPP, UnsupervisedDataCollator
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
@@ -39,9 +40,9 @@ if __name__ == "__main__":
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument("--loss_scale", default=0., type=float)
     parser.add_argument("--lr", default=1e-4, type=float)
+    parser.add_argument("--modality_reconstruct", action='store_true')
     parser.add_argument("--model_name", default="v1.1", type=str)
     parser.add_argument("--model_save_path", default=None, type=str)
-    parser.add_argument("--no_pretrain", action='store_true')
     parser.add_argument("--num_ends", default=1, type=int)
     parser.add_argument("--num_turns", default=8, type=int)
     parser.add_argument("--num_fused_layers", default=1, type=int)
@@ -85,12 +86,13 @@ if __name__ == "__main__":
     # 4。读输入数据
     if args.train_phase == 1:
         train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
-        c = UnsupervisedDataCollator(tokenizer, config, args.apex_level > 0)
+        c = UnsupervisedDataCollator(tokenizer, config, args.apex_level > 0, reconstruct=args.modality_reconstruct)
     else:
         train_data = TPPDataset(args.transcripts, args.num_turns, args.file_prefix)
         c = DataCollatorForTPP(tokenizer, config, args.apex_level > 0)
     # 5。整理config并建立模型
-    model = UnsupervisedTrainer(config, args.audio_path, args.text_path)
+    model_class = ReconstructTrainer if args.modality_reconstruct else MaskedLMTrainer
+    model = model_class(config, args.audio_path, args.text_path)
     # 6。数据并行
     no_decay = ['bias', 'LayerNorm.weight', 'LayerNorm.bias']
     decay = [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)]
@@ -130,15 +132,13 @@ if __name__ == "__main__":
     losses = []
     outer_it = tqdm.trange(args.train_epochs)
     for i in outer_it:
-        if i == 5:
-            break
         inner_it = train_loader if args.dont_show or get_rank() else tqdm.tqdm(train_loader, desc="Inner")
         le = len(inner_it)
         if isinstance(train_loader.sampler, DistributedSampler):
             train_loader.sampler.set_epoch(i)
         losses = []
         for j, batch in enumerate(inner_it):
-            batch = {k: v.to(args.device) for k, v in batch.items()}
+            batch = to_device(batch, args.device)
             mlm_loss, mam_loss, rs_loss = model(**batch)
             loss = mlm_loss + mam_loss + rs_loss
             if not args.dont_show and get_rank() == 0:

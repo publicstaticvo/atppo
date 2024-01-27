@@ -38,4 +38,12 @@ class DataCollatorForSingleTurnWRM:
             a_valid.append(audio_valid)
             t_valid.append(text_valid)
         audios, a_mask, texts, t_mask = map(lambda x: torch.stack(x, dim=0), [audios, a_mask, texts, t_mask])
-        return audios, a_mask, a_valid, texts, t_mask, t_valid, negative_indices
+        return {
+            "audio_input": audios,
+            "audio_mask": a_mask,
+            "text_input": texts,
+            "text_mask": t_mask,
+            "audio_valid": a_valid,
+            "text_valid": t_valid,
+            "neg": negative_indices
+        }

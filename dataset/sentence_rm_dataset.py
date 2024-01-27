@@ -34,4 +34,9 @@ class DataCollatorForSingleTurnSRM:
             texts.append(t)
             t_mask.append(tm)
         audios, a_mask, texts, t_mask = map(lambda x: torch.stack(x, dim=0), [audios, a_mask, texts, t_mask])
-        return audios, a_mask, texts, t_mask
+        return {
+            "audio_input": audios,
+            "audio_mask": a_mask,
+            "text_input": texts,
+            "text_mask": t_mask
+        }

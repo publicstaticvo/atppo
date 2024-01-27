@@ -139,9 +139,8 @@ if __name__ == "__main__":
             train_loader.sampler.set_epoch(i)
         losses = []
         for j, batch in enumerate(inner_it):
-            batch = tuple(t.to(args.device) for t in batch)
-            a_input, a_mask, t_input, t_label, t_mask, s_valid, e_valid, token_type, starts, ends = batch
-            mlm_loss, mam_loss, rs_loss, span_loss = model(a_input, t_input, a_mask, t_mask, t_label, token_type, s_valid, e_valid, starts, ends)
+            batch = to_device(batch, args.device)
+            mlm_loss, mam_loss, rs_loss, span_loss = model(**batch)
             loss = mlm_loss + mam_loss + rs_loss + span_loss
             if args.num_ends == 1:
                 loss += 2 * span_loss
