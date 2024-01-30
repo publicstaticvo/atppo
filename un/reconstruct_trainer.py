@@ -21,13 +21,19 @@ class ReconstructTrainer(TrainerBase):
         outputs = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id,
                              output_attentions=output_attentions, head_mask_for_fused=head_mask_for_fused)
         if output_attentions:
-            (fused_features, attentions), mam_label, a_masked = outputs
+            (fused_features, attentions), mam_label, (_, attention_mask) = outputs
         else:
-            fused_features, mam_label, a_masked = outputs
+            fused_features, mam_label, (_, attention_mask) = outputs
         bs, text_len = text_input.shape
         text_features = fused_features[:, :text_len]
         audio_features = fused_features[:, text_len:]
         mlm = self.mlm_loss(text_features, text_input)
+        # reconstruct mam_label into 2-turn
+        # print(audio_features.shape, attention_mask.shape, mam_label.shape)
+        audio_features = audio_features.reshape(bs * 2, 100, self.hidden_size)[:, 1:]
         mam_pre = self.mam_head(audio_features)
-        mam = self.l1(mam_pre, mam_label)
+        attention_mask = attention_mask.bool().unsqueeze(-1)
+        mam_pre = mam_pre.masked_select(attention_mask)
+        mam_label = mam_label.masked_select(attention_mask)
+        mam = self.l1(mam_pre, mam_label.detach())
         return mlm, mam, 0

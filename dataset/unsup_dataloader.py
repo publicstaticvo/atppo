@@ -91,7 +91,7 @@ class UnsupervisedDataCollator(DataCollatorForAT):
         for item in batch:
             ml = max([ml, len(item[1]) + len(item[4]) + len(item[6]) - 2])
         ml = min(ml, self.config.text.max_length)
-        seq_length = ml + self.config.audio.max_length
+        seq_length = ml + self.config.audio.max_length * 20 // SAMPLE_RATE
         for item in batch:
             # at和pt 有0有2 history为N-2轮 有0有2 每一轮用2分隔
             aa, at, atr, pa, pt, ptr, history = item

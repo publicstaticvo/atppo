@@ -739,14 +739,15 @@ class WavLMForMultiModal(WavLMPreTrainedModel):
         output_attentions = self.config.output_attentions
         output_hidden_states = self.config.output_hidden_states
         return_dict = self.config.use_return_dict
-        extract_features = self.feature_extractor(input_values)
-        extract_features = extract_features.transpose(1, 2)
+        extract_features = self.feature_extractor(input_values).transpose(1, 2)
         out_len, attention_mask = self._get_feature_vector_attention_mask(extract_features.shape[1], attention_mask, add_adapter=False)
-        masked_indices, mam_labels = None, None
         if perform_mam:
             extract_features, masked_indices, mam_labels = create_mam_samples(extract_features, out_len)
+        else:
+            mam_labels = extract_features
+            masked_indices = attention_mask
         hidden_states, extract_features = self.feature_projection(extract_features)
-        hidden_states, attention_mask, token_type_ids, masked_indices, mam_labels = self.concat_multi_turn(hidden_states, attention_mask, real_length=out_len, masked_indices=masked_indices, mam_labels=mam_labels)
+        hidden_states, attention_mask, token_type_ids, masked_indices, mam_labels = self.concat_multi_turn(hidden_states, attention_mask, real_length=out_len, masked_indices=masked_indices, mam_labels=mam_labels, mam=perform_mam)
         if token_embedding is not None:
             hidden_states = hidden_states + token_embedding(token_type_ids)
         encoder_outputs = self.encoder(
@@ -768,29 +769,29 @@ class WavLMForMultiTurn(WavLMForMultiModal):
         super(WavLMForMultiTurn, self).__init__(config)
         self.audio_sep = nn.Parameter(torch.randn(config.hidden_size), requires_grad=True)
 
-    def concat_multi_turn(self, hidden_states, attention_mask, real_length=None, masked_indices=None, mam_labels=None, *args, **kwargs):
+    def concat_multi_turn(self, hidden_states, attention_mask, real_length=None, masked_indices=None, mam_labels=None, mam=False, *args, **kwargs):
         bs = hidden_states.shape[0] // 2
         audio_len = hidden_states.shape[1]
         new_len = audio_len * 2 + 2
-        mam = masked_indices is not None
         a1, a2 = torch.split(hidden_states.view(bs, 2, -1, self.config.hidden_size), 1, dim=1)
         m1, m2 = torch.split(attention_mask.view(bs, 2, -1), 1, dim=1)
         a1, a2, m1, m2 = map(lambda x: x.squeeze(1), [a1, a2, m1, m2])
         hidden_states = torch.zeros([bs, new_len, self.config.hidden_size], device=a1.device, dtype=a1.dtype)
+        hidden_states[:, 0] = self.audio_cls[None, :]
+        hidden_states[:, audio_len + 1] = self.audio_sep[None, :]
         attention_mask = torch.zeros([bs, new_len], device=a1.device, dtype=torch.bool)
         token_type_ids = torch.ones([bs, new_len], device=a1.device, dtype=torch.long)
+        token_type_ids[:, :audio_len + 1] = 0
         masked_indices_for_concat = torch.zeros([bs, new_len], device=a1.device, dtype=masked_indices.dtype) if mam else None
         for i in range(bs):
             la1, la2 = real_length[2 * i: 2 * i + 2]
-            pl = la1 + la2 + 2
-            hidden_states[i, :pl] = torch.cat(
-                [self.audio_cls.unsqueeze(0), a1[i, :la1], self.audio_sep.unsqueeze(0), a2[i, :la2]], dim=0)
-            token_type_ids[i, :la1 + 1] = 0
-            attention_mask[i, :pl] = True
+            hidden_states[i, 1: audio_len + 1] = a1[i]
+            hidden_states[i, audio_len + 2:] = a2[i]
+            attention_mask[i, :la1 + 1] = True
+            attention_mask[i, audio_len + 1: audio_len + 2 + la2] = True
             if mam:
-                masked_indices_for_concat[i, :pl] = torch.cat(
-                    [torch.tensor([0]).bool().to(a1.device), masked_indices[2 * i][:la1, 0],
-                     torch.tensor([0]).bool().to(a1.device), masked_indices[2 * i + 1][:la2, 0]], dim=0)
+                masked_indices_for_concat[i, 1:audio_len + 1] = masked_indices[2 * i][:, 0]
+                masked_indices_for_concat[i, audio_len + 2:] = masked_indices[2 * i + 1][:, 0]
         if mam:
             masked_indices = masked_indices.view(bs * 2, audio_len, 1)
             mam_labels = mam_labels.view(bs * 2, audio_len, -1)
@@ -802,31 +803,32 @@ class WavLMForCRS(WavLMForMultiTurn):
     def __init__(self, config):
         super(WavLMForCRS, self).__init__(config)
 
-    def concat_multi_turn(self, hidden_states, attention_mask, real_length=None, masked_indices=None, mam_labels=None, *args, **kwargs):
+    def concat_multi_turn(self, hidden_states, attention_mask, real_length=None, masked_indices=None, mam_labels=None, mam=False, *args, **kwargs):
         bs = hidden_states.shape[0] // 3
         audio_len = hidden_states.shape[1]
         new_len = audio_len * 2 + 2
-        mam = masked_indices is not None
         aa, pa, na = torch.split(hidden_states.view(bs, 3, -1, self.config.hidden_size), 1, dim=1)
         am, pm, nm = torch.split(attention_mask.view(bs, 3, -1), 1, dim=1)
         aa, pa, na, am, pm, nm = map(lambda x: x.squeeze(1), [aa, pa, na, am, pm, nm])
         hidden_states = torch.zeros([bs * 2, new_len, self.config.hidden_size], device=aa.device, dtype=aa.dtype)
+        hidden_states[:, 0] = self.audio_cls[None, :]
+        hidden_states[:, audio_len + 1] = self.audio_sep[None, :]
         attention_mask = torch.zeros([bs * 2, new_len], device=aa.device, dtype=torch.bool)
         token_type_ids = torch.ones([bs * 2, new_len], device=aa.device, dtype=torch.long)
+        token_type_ids[:, :audio_len + 1] = 0
         masked_indices_for_concat = torch.zeros([bs, new_len], device=aa.device, dtype=masked_indices.dtype) if mam else None
         for i in range(bs):
             laa, lpa, lna = real_length[3 * i: 3 * i + 3]
-            pl = laa + lpa + 2
-            hidden_states[2 * i, :pl] = torch.cat([self.audio_cls.unsqueeze(0), aa[i][:laa], self.audio_sep.unsqueeze(0), pa[i][:lpa]], dim=0)
-            attention_mask[2 * i, :pl] = True
-            nl = laa + lna + 2
-            hidden_states[2 * i + 1, :nl] = torch.cat([self.audio_cls.unsqueeze(0), aa[i][:laa], self.audio_sep.unsqueeze(0), na[i][:lna]], dim=0)
-            attention_mask[2 * i + 1, :nl] = True
+            hidden_states[2 * i, 1: audio_len + 1] = aa[i]
+            hidden_states[2 * i, audio_len + 2:] = pa[i]
+            hidden_states[2 * i + 1, 1: audio_len + 1] = aa[i]
+            hidden_states[2 * i + 1, audio_len + 2:] = na[i]
+            attention_mask[2 * i: 2 * i + 2, :laa + 1] = True
+            attention_mask[2 * i, audio_len + 1: audio_len + 2 + lpa] = True
+            attention_mask[2 * i + 1, audio_len + 1: audio_len + 2 + lna] = True
             if mam:
-                masked_indices_for_concat[i, :pl] = torch.cat(
-                    [torch.tensor([0]).bool().to(aa.device), masked_indices[3 * i][:laa, 0],
-                     torch.tensor([0]).bool().to(aa.device), masked_indices[3 * i + 1][:lpa, 0]], dim=0)
-            token_type_ids[2 * i: 2 * i + 2, :laa + 1] = 0
+                masked_indices_for_concat[i, 1:audio_len + 1] = masked_indices[3 * i][:, 0]
+                masked_indices_for_concat[i, audio_len + 2:] = masked_indices[3 * i + 1][:, 0]
         if mam:
             masked_indices = masked_indices.view(bs, 3, audio_len, 1)[:, :2].contiguous().view(bs * 2, audio_len, 1)
             mam_labels = mam_labels.view(bs, 3, audio_len, -1)[:, :2].contiguous().view(bs * 2, audio_len, -1)
