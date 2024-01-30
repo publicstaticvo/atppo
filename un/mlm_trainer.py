@@ -23,11 +23,12 @@ class MaskedLMTrainer(TrainerBase):
         outputs = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id,
                              masked_modeling=perform_mam, output_attentions=output_attentions,
                              head_mask_for_fused=head_mask_for_fused)
+        bs, text_len = mlm_labels.shape
         if output_attentions:
-            (fused_features, attentions), mam_label, a_masked = outputs
+            # (fused_features, attentions), mam_label, a_masked = outputs
+            return outputs[0][1], text_len
         else:
             fused_features, mam_label, a_masked = outputs
-        bs, text_len = mlm_labels.shape
         mam, rs_loss = 0, 0
         if self.train_phase == 2:
             fused_features = fused_features.view(bs, 4, -1, self.hidden_size)
