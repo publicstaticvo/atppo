@@ -3,12 +3,13 @@ import sys
 import tqdm
 import pickle
 import argparse
+import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
 from mlm_trainer import MaskedLMTrainer
 from reconstruct_trainer import ReconstructTrainer
-from dataset import TPPDataset, ATDataset, DataCollatorForTPP, UnsupervisedDataCollator
+from dataset import ATDataset, UnsupervisedDataCollator
 from torch.utils.data import DataLoader, SequentialSampler
 from transformers import RobertaTokenizerFast
 
