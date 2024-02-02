@@ -20,11 +20,11 @@ class ReconstructTrainer(TrainerBase):
         # audio: 3B * 160000  text: 2B * 514  mlm_labels: B * 514  turn_id: B * 514
         outputs = self.model(audio_input, text_input, audio_attention_mask, text_attention_mask, turn_id,
                              output_attentions=output_attentions, head_mask_for_fused=head_mask_for_fused)
+        bs, text_len = text_input.shape
         if output_attentions:
-            (fused_features, attentions), mam_label, (_, attention_mask) = outputs
+            return outputs[0][1], text_len
         else:
             fused_features, mam_label, (_, attention_mask) = outputs
-        bs, text_len = text_input.shape
         text_features = fused_features[:, :text_len]
         audio_features = fused_features[:, text_len:]
         mlm = self.mlm_loss(text_features, text_input)
