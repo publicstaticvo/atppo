@@ -1,10 +1,8 @@
 import os
 import sys
 import tqdm
-import json
 import pickle
 import argparse
-import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *

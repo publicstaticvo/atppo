@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from util import ATConfig
-from models import ATForTPP, ATMultiTurnModel, TrainerBase
+from models import ATForTPP, ATMultiTurnModel, TrainerBase, AT23062682
 
 
 class MaskedLMTrainer(TrainerBase):
@@ -10,7 +10,7 @@ class MaskedLMTrainer(TrainerBase):
         super(MaskedLMTrainer, self).__init__(config)
         self.num_ends = config.fused.num_ends
         self.train_phase = config.train_phase
-        model_class = ATMultiTurnModel if config.train_phase == 1 else ATForTPP
+        model_class = AT23062682 if config.train_phase == 1 else ATForTPP
         self.model = model_class(config, audio=audio, text=text)
         self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
         self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))

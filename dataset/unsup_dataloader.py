@@ -59,11 +59,7 @@ class UnsupervisedDataCollator(DataCollatorForAT):
         super(UnsupervisedDataCollator, self).__init__(tokenizer, config, fp16, mlm_prob)
         self.reconstruct = reconstruct
 
-    def mask_single_word(self, text_input, transcript, mask_idx=None):
-        if mask_idx is None:
-            word = random.choice(transcript)
-        else:
-            word = transcript[mask_idx]
+    def mask_single_word(self, text_input, word):
         mask_token = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
         labels = text_input.clone()
         start, end = word[1:3]
@@ -104,12 +100,19 @@ class UnsupervisedDataCollator(DataCollatorForAT):
                 head[:ml, ml:] = True
                 return_dict["head_mask_for_fused"].append(head)
             else:
-                text, mlm_label = self.get_mlm_instance(text)
-                mlm_label, _ = pad_cut(mlm_label, ml, -100)
-                return_dict["mlm_labels"].append(mlm_label)
-            text, tam = pad_cut(text, ml)
-            return_dict["text_input"].append(text)
-            return_dict["text_attention_mask"].append(tam)
+                for i, w in enumerate(atr + ptr):
+                    text, mlm_label = self.mask_single_word(text, w)
+                    text, tam = pad_cut(text, ml)
+                    return_dict["text_input"].append(text)
+                    return_dict["text_attention_mask"].append(tam)
+                    mlm_label, _ = pad_cut(mlm_label, ml, -100)
+                    return_dict["mlm_labels"].append(mlm_label)
+                # text, mlm_label = self.get_mlm_instance(text)
+                # mlm_label, _ = pad_cut(mlm_label, ml, -100)
+                # return_dict["mlm_labels"].append(mlm_label)
+            # text, tam = pad_cut(text, ml)
+            # return_dict["text_input"].append(text)
+            # return_dict["text_attention_mask"].append(tam)
 
             aa, a_aam = pad_cut(aa, self.config.audio.max_length)
             pa, p_aam = pad_cut(pa, self.config.audio.max_length)
