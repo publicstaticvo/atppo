@@ -70,7 +70,7 @@ class ATMultiTurnModel(ATModel):
             fused_output = self.fused_encoder(fused_input, fused_attention_mask, output_attentions=output_attentions, head_mask=head_mask_for_fused)
             fused_features = fused_output.last_hidden_state
             if output_attentions:
-                attention = fused_output.all_self_attentions
+                attention = fused_output.attentions
                 return (fused_features, attention), mam_labels, a_masked
             return fused_features, mam_labels, a_masked
         return (audio_features, audio_mask, text_features), mam_labels, a_masked
