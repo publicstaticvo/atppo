@@ -1,6 +1,7 @@
 from util import *
 from torch import nn
-from models import ATForTPP, WavLMMAMHead
+from models import WavLMMAMHead
+from SPECTRA import SpectraModel
 from transformers import PreTrainedModel
 from transformers.models.roberta.modeling_roberta import RobertaLMHead
 
@@ -13,7 +14,7 @@ class ActorModel(PreTrainedModel):
 
     def __init__(self, config: ATConfig, perform_mlm=False, *args, **kwargs):
         super(ActorModel, self).__init__(config)
-        self.model = ATForTPP(config=config)
+        self.model = SpectraModel(config=config)
         self.num_ends = config.fused.num_ends
         self.vocab_size = config.text.vocab_size
         self.hidden_size = config.text.hidden_size

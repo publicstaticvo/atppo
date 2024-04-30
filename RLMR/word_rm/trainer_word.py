@@ -1,5 +1,5 @@
 import torch
-from rm_trainer import AlignTrainer
+from RLMR import AlignTrainer
 from util import ATConfig, similarity
 from models import ATSingleTurnModel
 

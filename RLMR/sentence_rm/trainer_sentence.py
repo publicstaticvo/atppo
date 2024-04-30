@@ -1,6 +1,6 @@
 from util import ATConfig
-from rm_trainer import AlignTrainer
-from models import ATSingleTurnForSentenceAlign
+from RLMR import AlignTrainer
+from modeling_sentence_reward import ATSingleTurnForSentenceAlign
 
 
 class SentenceAlignTrainer(AlignTrainer):

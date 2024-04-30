@@ -8,7 +8,8 @@ from transformers import get_linear_schedule_with_warmup
 
 from util import *
 from actor_model import ActorModel
-from models import ATSingleTurnModel, ATSingleTurnForSentenceAlign
+from models import ATSingleTurnModel
+from RLMR import ATSingleTurnForSentenceAlign
 SAMPLE_RATE = 1600
 
 

@@ -1,7 +1,8 @@
 import torch
 from torch import nn
 from util import ATConfig
-from models import ATForTPP, TrainerBase
+from models import TrainerBase
+from modeling_spectra import SpectraModel
 
 
 class TPPTrainer(TrainerBase):
@@ -10,7 +11,7 @@ class TPPTrainer(TrainerBase):
     def __init__(self, config: ATConfig, audio=None, text=None, *args, **kwargs):
         super(TPPTrainer, self).__init__(config)
         self.num_ends = config.fused.num_ends
-        self.model = ATForTPP(config, audio=audio, text=text)
+        self.model = SpectraModel(config, audio=audio, text=text)
         self.start_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
         self.end_prediction_head = nn.Sequential(nn.Linear(self.hidden_size, self.num_ends))
 

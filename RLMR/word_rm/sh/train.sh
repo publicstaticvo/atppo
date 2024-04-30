@@ -1,5 +1,4 @@
 python -m torch.distributed.launch --nproc_per_node=4 /mnt/ewwe/yts/at/atppo/rms/main.py \
-    --align_mode=word \
     --apex_level=1 \
     --audio_length=10 \
     --audio_path=/mnt/ewwe/yts/at/models/wavlmForV1.1.3 \

@@ -9,8 +9,9 @@ import datetime
 print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
+from SPECTRA import TPPDataset
 from ppo_trainer import PPOTrainer
-from dataset import TPPDataset, DataCollatorForPPO
+from ppo_dataloader import DataCollatorForPPO
 from transformers import RobertaTokenizerFast
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 

@@ -1,16 +1,15 @@
 from util import *
-from .wavlm import WavLMForCRS
-from .modeling_at import ATModel
+from models import WavLMForCRS, ATModel
 
 
-class ATForTPP(ATModel):
+class SpectraModel(ATModel):
     config_class = ATConfig
     _keys_to_ignore_on_load_missing = ["mlm_head", "mam_head", "selection_head", "start_prediction_head", "end_prediction_head", r"position_ids", r"mask_token"]
     _keys_to_ignore_on_load_unexpected = [r"masked_spec_embed"]
     supports_gradient_checkpointing = True
 
     def __init__(self, config: ATConfig, audio=None, text=None, *args, **kwargs):
-        super(ATForTPP, self).__init__(config, audio_class=WavLMForCRS, audio=audio, text=text)
+        super(SpectraModel, self).__init__(config, audio_class=WavLMForCRS, audio=audio, text=text)
 
     def fuse_four(self, text, audio, bs, text_len, audio_len, token_type_ids=None):
         text = text.unsqueeze(2).repeat(1, 1, 2, 1, 1).view(4 * bs, text_len, -1)

@@ -1,5 +1,4 @@
 from util import *
-from .dataset_base import DataCollatorForAT
 
 
 class DataCollatorForSingleTurnSRM:
