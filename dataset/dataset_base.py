@@ -23,7 +23,7 @@ class SingleTurnDataset(Dataset):
 
 
 class ATDataset(Dataset):
-    def __init__(self, datas, num_turns, file_prefix=None):
+    def __init__(self, datas, num_turns, file_prefix=None, three_turns=False):
         if isinstance(datas, str):
             with open(datas, "rb") as f:
                 self.datas = pickle.load(f)
@@ -32,7 +32,10 @@ class ATDataset(Dataset):
         self.n = len(datas)
         self.prefix = file_prefix
         self.num_turns = num_turns
-        self.has_positive = [i for i, d in enumerate(self.datas) if d[-1] >= 0]
+        if three_turns:
+            self.has_positive = [i for i, d in enumerate(self.datas) if d[-1] >= 0 and self.datas[d[-1]][-1] >= 0]
+        else:
+            self.has_positive = [i for i, d in enumerate(self.datas) if d[-1] >= 0]
 
     def __len__(self):
         return len(self.has_positive)

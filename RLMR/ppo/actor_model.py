@@ -27,9 +27,9 @@ class ActorModel(PreTrainedModel):
         self.ce = nn.CrossEntropyLoss()
         self.l1 = nn.L1Loss()
 
-    def predict(self, text, mask):
+    def predict(self, text, mask, head):
         words = text.masked_select(mask.unsqueeze(-1)).view(-1, self.hidden_size)
-        return self.start_prediction_head(words).squeeze(-1)
+        return head(words).squeeze(-1)
 
     def mlm_loss(self, text, label):
         mlm_pre = self.mlm_head(text)
@@ -57,8 +57,8 @@ class ActorModel(PreTrainedModel):
         bs, text_len = start_valid.shape
         fused_features = fused_features.view(bs, 4, -1, self.hidden_size)
         text_fused = fused_features[:, 0, :text_len]
-        pred_start = self.predict(text_fused, start_valid)
-        pred_end = self.predict(text_fused, end_valid)
+        pred_start = self.predict(text_fused, start_valid, self.start_prediction_head)
+        pred_end = self.predict(text_fused, end_valid, self.end_prediction_head)
         if perform_mlm:
             mlm = self.mlm_loss(text_fused, mlm_label)
             mam = self.mam_loss(fused_features[:, 0, text_len:], mam_label, a_masked)

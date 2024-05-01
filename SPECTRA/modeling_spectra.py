@@ -1,5 +1,5 @@
 from util import *
-from models import WavLMForCRS, ATModel
+from models import WavLMForMultiTurn, ATModel
 
 
 class SpectraModel(ATModel):
@@ -9,7 +9,7 @@ class SpectraModel(ATModel):
     supports_gradient_checkpointing = True
 
     def __init__(self, config: ATConfig, audio=None, text=None, *args, **kwargs):
-        super(SpectraModel, self).__init__(config, audio_class=WavLMForCRS, audio=audio, text=text)
+        super(SpectraModel, self).__init__(config, audio_class=WavLMForMultiTurn, audio=audio, text=text)
 
     def fuse_four(self, text, audio, bs, text_len, audio_len, token_type_ids=None):
         text = text.unsqueeze(2).repeat(1, 1, 2, 1, 1).view(4 * bs, text_len, -1)
@@ -34,8 +34,8 @@ class SpectraModel(ATModel):
         fused_attention_mask = (1.0 - fused_attention_mask[:, None, None, :]) * torch.finfo(text_features.dtype).min
         return fused_input, fused_attention_mask
 
-    def forward(self, audio_input, text_input, audio_mask=None, text_mask=None, turn_id=None, mask_modeling=False, *args, **kwargs):
-        out = self.audio_encoder(audio_input, audio_mask, perform_mam=mask_modeling, token_embedding=self.text_encoder.embeddings.token_type_embeddings)
+    def forward(self, audio_input, text_input, audio_mask=None, text_mask=None, turn_id=None, mask_modeling=False, crs=True, *args, **kwargs):
+        out = self.audio_encoder(audio_input, audio_mask, perform_mam=mask_modeling, perform_crs=crs, token_embedding=self.text_encoder.embeddings.token_type_embeddings)
         audio_features, audio_mask = out[:2]
         text_features = self.text_encoder(text_input, text_mask, token_type_ids=turn_id)[0]
         fused_input, fused_attention_mask = self.get_fused_input(audio_features, audio_mask, text_features, text_mask)

@@ -15,7 +15,7 @@ def concat_audio(audio, transcript):
     return new_audio
 
 
-def step(loss, model, args, optimizer=None, scheduler=None, step=0):
+def step(loss, model, args, optimizer=None, scheduler=None, global_step=0):
     if args.ds_config:
         model.backward(loss)
         model.step()
@@ -29,7 +29,7 @@ def step(loss, model, args, optimizer=None, scheduler=None, step=0):
             loss.backward()
             if args.grad_norm > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_norm)
-        if step % args.grad_acc == 0:
+        if global_step % args.grad_acc == 0:
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad()

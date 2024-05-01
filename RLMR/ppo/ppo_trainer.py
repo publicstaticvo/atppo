@@ -74,7 +74,6 @@ class PPOTrainer:
                     splits将actor_start和actor_end分成两轮
         """
         # 1 进行预测，获得actor预测结果和ref预测结果
-        self.step_count += 1
         bs, text_len = mlm_label.shape
         device = mlm_label.device
         with torch.no_grad():
@@ -157,6 +156,7 @@ class PPOTrainer:
         ppo_loss2 = -advantages * torch.clamp(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
         ppo_loss = torch.max(ppo_loss1, ppo_loss2).mean()
         actor_loss = mlm + mam + rs_loss + ppo_loss
+        self.step_count += 1
         step(actor_loss, self.actor, self.args, self.actor_optim, self.actor_scheduler, self.step_count)
         # 4 critic step
         audio_features, _, text_features = self.critic(audio_input_for_rm, full_text_for_rm, audio_mask_for_rm, full_text_for_rm_mask)

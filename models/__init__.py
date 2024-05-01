@@ -6,8 +6,7 @@ from .wavlm import (
     WavLMEncoderStableLayerNorm,
     WavLMFeatureEncoder,
     WavLMForMultiModal,
-    WavLMForMultiTurn,
-    WavLMForCRS
+    WavLMForMultiTurn
 )
 
 __all__ = ["ATModel",
@@ -18,7 +17,6 @@ __all__ = ["ATModel",
            "WavLMEncoder",
            "WavLMFeatureEncoder",
            "WavLMEncoderStableLayerNorm",
-           "WavLMForCRS",
            "WavLMForMultiTurn",
            "WavLMForMultiModal"
            ]

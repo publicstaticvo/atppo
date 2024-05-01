@@ -1,85 +1,63 @@
 import os
 import sys
+import math
 import tqdm
 import argparse
 import numpy as np
-from apex import amp
-from torch.nn.functional import normalize
+import datetime
 
+print(datetime.datetime.now())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from util import *
-from models import ATMultiTurnModel, WavLMForMultiTurn
-from dataset import ATDataset, DataCollatorForDP
+from SPECTRA import TPPDataset
+from dp_trainer import DPTrainer
+from dp_dataset import DPDataset, DataCollatorForDP
 from transformers import RobertaTokenizerFast
-from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
+from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
+
+sw = None
 SAMPLE_RATE = 16000
-
-
-def construct_mean_map(d):
-    dd = torch.arange(d)
-    dd = dd[None, :] + 1 - dd[:, None]
-    return torch.clamp_min(dd, 1).unsqueeze(-1)
-
-
-def split_audio_features(audio, audio_attention_mask):
-    bs = audio_attention_mask.shape[0] // 2
-    audio_attention_mask_sum = torch.clamp_max(audio_attention_mask.view(bs, 2, -1).sum(-1).div(320, rounding_mode='trunc'), 99)
-    audio_attention_mask_sum = audio_attention_mask_sum.long().tolist()
-    af = []
-    for i in range(bs):
-        af.append(audio[i, 1:audio_attention_mask_sum[i][0]+1])
-        af.append(audio[i, audio_attention_mask_sum[i][0]+2:])
-        assert af[-1].shape[0] == audio_attention_mask_sum[i][1]
-    return af
-
-
-def split_text_words(text, split_mark):
-    tw = []
-    for tt, sm in zip(text, split_mark):
-        tw.append(tt[:sm])
-        tw.append(tt[sm:])
-    return tw
-
-
-def precompute_max_sim(s):
-    # Precompute the maximum of s(l, i, j) for all i, j and every possible k ≤ l ≤ i
-    m, n = s.shape[-2:]
-    max_s = torch.zeros_like(s).tolist()
-    argmax_s = torch.zeros_like(s).tolist()
-    s = s.tolist()
-    for j in range(n):
-        for i in range(m):
-            max_s[0][i][j] = s[0][i][j]
-            argmax_s[0][i][j] = 0
-            for k in range(1, i + 1):
-                if max_s[k-1][i][j] < s[k][i][j]:
-                    max_s[k][i][j] = s[k][i][j]
-                    argmax_s[k][i][j] = k
-                else:
-                    max_s[k][i][j] = max_s[k-1][i][j]
-                    argmax_s[k][i][j] = argmax_s[k-1][i][j]
-    return s, max_s, argmax_s
-
+CONFIG = "config.json"
+os.environ["NCCL_DEBUG"] = "WARN"
 
 if __name__ == "__main__":
     # 1.输入参数
     parser = argparse.ArgumentParser()
-    parser.add_argument("--apex_level", default=2, type=int)
+    parser.add_argument("--apex_level", default=0, type=int)
     parser.add_argument("--audio_length", default=10, type=float)
+    parser.add_argument("--audio_path", default=None, type=str, required=True)
     parser.add_argument("--batch_size", default=256, type=int)
+    parser.add_argument("--dont_show", action='store_true')
+    parser.add_argument("--ds_config", default=None, type=str)
+    parser.add_argument("--ds_stage", default=3, type=int)
     parser.add_argument("--file_prefix", default=None, type=str)
+    parser.add_argument("--grad_acc", default=0, type=int)
+    parser.add_argument("--grad_norm", default=0., type=float)
     parser.add_argument("--local_rank", default=-1, type=int)
+    parser.add_argument("--loss_scale", default=0., type=float)
+    parser.add_argument("--lr", default=1e-5, type=float)
     parser.add_argument("--max_length", default=512, type=int)
-    parser.add_argument("--num_ends", default=1, type=int)
+    parser.add_argument("--model_name", default="v1.1", type=str)
+    parser.add_argument("--model_save_path", default=None, type=str)
     parser.add_argument("--num_turns", default=8, type=int)
-    parser.add_argument("--reward_path", default=None, type=str, required=True)
+    parser.add_argument("--save_interval", default=100, type=int)
+    parser.add_argument("--save_tmp", default=None, type=str)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument("--text_length", default=512, type=int)
-    parser.add_argument("--tokenizer_path", default=None, type=str, required=True)
+    parser.add_argument("--text_path", default=None, type=str, required=True)
+    parser.add_argument("--train_epochs", default=10, type=int)
     parser.add_argument("--transcripts", default=None, type=str, required=True)
+    parser.add_argument("--warmup", default=0.01, type=float)
+    parser.add_argument("--weight_decay", default=0.01, type=float)
     args = parser.parse_args()
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     n_gpu = torch.cuda.device_count()
+    if args.grad_acc == 0:
+        args.grad_acc = 1
+    else:
+        args.grad_acc *= 3
+    if not torch.cuda.is_available():
+        args.apex_level = 0
     if args.local_rank >= 0:
         torch.cuda.set_device(args.local_rank)
         args.device = torch.device("cuda", args.local_rank)
@@ -91,59 +69,36 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     # 3。读输入数据
-    tokenizer = RobertaTokenizerFast.from_pretrained(args.tokenizer_path)
-    train_data = ATDataset(args.transcripts, args.num_turns, args.file_prefix)
+    tokenizer = RobertaTokenizerFast.from_pretrained(args.text_path)
+    train_data = DPDataset(args.transcripts, args.num_turns, args.file_prefix)
+    args.num_train_steps = args.train_epochs * math.ceil(len(train_data) / args.batch_size / args.grad_acc)
     # 4。建立模型
-    model = ATMultiTurnModel.from_pretrained(args.reward_path).to(args.device)
-    model = amp.initialize(model, opt_level=f"O{args.apex_level}", keep_batchnorm_fp32=False if args.apex_level >= 2 else None, loss_scale="dynamic")
+    args.batch_size *= 2
+    trainer = DPTrainer(args, tokenizer)
     c = DataCollatorForDP(args, tokenizer)
     if args.local_rank >= 0:
-        train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, shuffle=False)
+        train_loader = DataLoader(train_data, sampler=DistributedSampler(train_data, seed=args.seed), batch_size=args.batch_size, collate_fn=c, pin_memory=True, num_workers=20)
     else:
-        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=SequentialSampler(train_data), shuffle=False)
-    mean_map = construct_mean_map(200).to(args.device).half()
-    for j, batch in enumerate(tqdm.tqdm(train_loader)):
-        batch = to_device(batch, args.device)
-        audio_features, text_words = model(**batch)
-        audio_features = split_audio_features(audio_features, batch["audio_attention_mask"])
-        text_words = split_text_words(text_words, batch["split_marks"])  # audio和text均为2B个
-        tpp_starts, tpp_ends = [], []  # 一个batch内部所有label打成一个1D数组
-        for a, t in zip(audio_features, text_words):
-            # a: M*H t: N*H
-            m = a.shape[0]
-            n = t.shape[0]
-            c = a.unsqueeze(1).repeat(1, m, 1).permute(2, 0, 1).triu().permute(1, 2, 0) / mean_map[:m, :m, :]
-            sim = torch.einsum("ijk,lk->ijl", normalize(c), normalize(t))  # M*M*N
-            # print(sim.tolist())
-            sim, max_sim, argmax_sim = precompute_max_sim(sim)
-            # 动态规划
-            obj = [[float("-inf") for _ in range(n)] for _ in range(m)]
-            starts = [[0 for _ in range(n)] for _ in range(m)]  # 每次被选中的argmax_sim，由end_labels[i]指向start_labels[i]
-            ends = [[0 for _ in range(n)] for _ in range(m)]  # 由end_labels[i]指向end_labels[i-1]
-            for j in range(n):  # 前j个词
-                for i in range(m):  # 前i个语音token
-                    if j == 0:
-                        obj[i][j] = sim[0][i][j]
-                        starts[i][j] = 0
-                        ends[i][j] = -1
-                    else:
-                        for k in range(i):
-                            if obj[k][j - 1] + max_sim[k][i][j] > obj[i][j]:
-                                obj[i][j] = obj[k][j - 1] + max_sim[k][i][j]
-                                starts[i][j] = argmax_sim[k][i][j]
-                                ends[i][j] = k
-            # 最大匹配值
-            mm, argmax = float("-inf"), -1
-            for i, o in enumerate(obj):
-                if mm < o[-1]:
-                    mm = o[-1]
-                    argmax = i
-            # 回溯路径
-            s, e = [], [argmax]
-            for j in reversed(range(n)):
-                if j > 0:
-                    e.append(ends[e[-1]][j])
-                s.append(starts[e[-1]][j])
-            tpp_starts.extend(s[::-1])
-            tpp_ends.extend(e[::-1])
-        print(tpp_starts, tpp_ends)
+        train_loader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=c, sampler=RandomSampler(train_data))
+    trainer.train()
+    losses = []
+    outer_it = tqdm.trange(args.train_epochs)
+    for i in outer_it:
+        inner_it = train_loader if args.dont_show or get_rank() else tqdm.tqdm(train_loader, desc="Inner")
+        le = len(inner_it)
+        if isinstance(train_loader.sampler, DistributedSampler):
+            train_loader.sampler.set_epoch(i)
+        losses = [0, 0, 0, 0]
+        for j, batch in enumerate(inner_it):
+            batch = {k: v if k == "splits" else v.to(args.device) for k, v in batch.items()}
+            *_, rs, step1, step3, step5 = trainer.train_dp(**batch)
+            losses[0] += float(step1)
+            losses[1] += float(step3)
+            losses[2] += float(rs)
+            losses[3] += float(step5)
+            if not args.dont_show and get_rank() == 0:
+                inner_it.set_postfix_str(f"step1: {step1:.4f}|step3: {step3:.4f}|step5: {step5:.4f}|rs: {rs:.4f}")
+        if get_rank() == 0 and ((i + 1) % args.save_interval == 0 or args.save_tmp) and args.model_save_path:
+            trainer.save_pretrained(os.path.join(args.model_save_path, f"{args.model_name}-{i + 1}" if (i + 1) % args.save_interval == 0 else args.save_tmp))
+        if get_rank() == 0:
+            outer_it.set_postfix_str(f"step1: {losses[0] / le:.4f}|step3:{losses[1] / le:.4f}|step5: {losses[3] / le:.4f}|rs: {losses[2] / le:.4f}")
